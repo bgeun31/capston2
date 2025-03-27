@@ -1,0 +1,33 @@
+devices:
+  - name: R1
+    ip: 172.16.0.2
+    snmp: true
+    cli: true
+    vendor: cisco
+    username: song
+    auth_password: songbonggeun
+    priv_password: songbonggeun
+  - name: R2
+    ip: 172.16.0.1
+    snmp: true
+    cli: true
+    vendor: cisco
+    username: song
+    auth_password: songbonggeun
+    priv_password: songbonggeun
+  - name: SW2
+    ip: 172.16.0.250
+    snmp: true
+    cli: true
+    vendor: cisco
+    username: song
+    auth_password: songbonggeun
+    priv_password: songbonggeun
+  - name: SW3
+    ip: 192.168.10.250
+    snmp: true
+    cli: true
+    vendor: cisco
+    username: song
+    auth_password: songbonggeun
+    priv_password: songbonggeun
