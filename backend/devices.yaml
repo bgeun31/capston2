@@ -1,33 +1,10 @@
 devices:
-  - name: R1
-    ip: 172.16.0.2
+  - name: R10
+    ip: 192.168.0.1
     snmp: true
     cli: true
     vendor: cisco
     username: song
-    auth_password: songbonggeun
-    priv_password: songbonggeun
-  - name: R2
-    ip: 172.16.0.1
-    snmp: true
-    cli: true
-    vendor: cisco
-    username: song
-    auth_password: songbonggeun
-    priv_password: songbonggeun
-  - name: SW2
-    ip: 172.16.0.250
-    snmp: true
-    cli: true
-    vendor: cisco
-    username: song
-    auth_password: songbonggeun
-    priv_password: songbonggeun
-  - name: SW3
-    ip: 192.168.10.250
-    snmp: true
-    cli: true
-    vendor: cisco
-    username: song
-    auth_password: songbonggeun
-    priv_password: songbonggeun
+    auth_password: songbonggeun     # SNMP 인증 암호
+    priv_password: songbonggeun     # SNMP 암호화 암호
+    password: songbonggeun          # ✅ CLI(SSH) 접속용 비밀번호 ← 추가!
