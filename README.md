@@ -35,3 +35,18 @@ Router(config)# snmp-server user <사용자이름> <그룹명> v3 auth sha <암�
 1. Router 게이트웨이 설정
 2. community_string 코드 수정
 3. SNMPv3를 사용하기 때문에 pysnmp.hlapi.v3arch.asyncio를 import 해야됨.
+
+★Router SSH 설정
+Router(config)# hostname <장비 이름>
+Router(config)# ip domain-name example.com
+Router(config)# crypto key generate rsa
+
+moudle 1024로 설정
+이유: ssh version 2 쓰려면 812이상의 모듈을 사용해야함.
+
+Router(config)# ip ssh version 2
+Router(config)# line vty 0 4
+Router(config-line)# transport input ssh
+Router(config-line)# login local
+Router(config-line)# exit
+Router(config)# username <사용자 이름> privilege 15 secret <비밀번호>
