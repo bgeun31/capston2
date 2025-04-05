@@ -10,7 +10,7 @@ Router(config)# ```snmp-server community <커뮤니티_문자열> RO <리스트 
 2. SNMPv3 설정 및 암호 적용
 Router(config)# ```snmp-server group <그룹명> v3 auth```
 Router(config)# ```snmp-server user <사용자이름> <그룹명> v3 auth sha <암호> priv aes 128 <암호>
-```
+
 3. Router SSH 설정
 Router(config)# ```hostname <장비 이름>```
 Router(config)# ```ip domain-name example.com```
