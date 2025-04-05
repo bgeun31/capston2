@@ -1,17 +1,20 @@
 # SNMP 및 SSH 장비 설정방법
 1. 장비 내 SNMP 활성화
 Router(config)# ```snmp-server community <커뮤니티_문자열> RO```
+
  - RO: 읽기 전용(데이터 조회만 가능)
  - RW: 읽기, 쓰기 전용(설정 변경 가능)
 
 Router(config)# ```access-list <리스트 번호> permit <허용할 PC IP>```
+
 Router(config)# ```snmp-server community <커뮤니티_문자열> RO <리스트 번호>```
 
+
 2. SNMPv3 설정 및 암호 적용
-Router(config)# ```snmp-server group <그룹명> v3 auth```
+Router(config)# ```snmp-server group <그룹명> v3 auth``` \n
 Router(config)# ```snmp-server user <사용자이름> <그룹명> v3 auth sha <암호> priv aes 128 <암호>
 
-3. Router SSH 설정
+4. Router SSH 설정
 Router(config)# ```hostname <장비 이름>```
 Router(config)# ```ip domain-name example.com```
 Router(config)# ```crypto key generate rsa```
