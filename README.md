@@ -77,7 +77,7 @@
  - visual studio code로 프로젝트 폴더 열기
  - 모듈 설치하기
  - cd backend -> pip install -r requirements.txt
- - cd frontend -> npm install
+ - cd topology-web -> npm install
 
 
 # 방화벽 해제
