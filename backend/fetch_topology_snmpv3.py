@@ -1,5 +1,6 @@
 # fetch_topology_snmpv3.py
 
+from fastapi import HTTPException
 import yaml
 import paramiko
 import re
@@ -9,6 +10,8 @@ from pysnmp.hlapi import (
     ContextData, ObjectType, ObjectIdentity, UsmUserData, usmHMACSHAAuthProtocol,
     usmAesCfb128Protocol
 )
+
+from backend import app
 
 def init_db(db_path="devices.db"):
     """
@@ -94,6 +97,70 @@ def fetch_snmpv3_info(ip, username, auth_pw, priv_pw):
         return None
     for varBind in varBinds:
         return str(varBind[1])
+    
+def fetch_status_info(ip, username, password):
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(ip, username=username, password=password, timeout=5)
+
+    result = {}
+
+    # CPU usage
+    stdin, stdout, stderr = ssh.exec_command("show processes cpu | include CPU utilization")
+    cpu_line = stdout.read().decode('utf-8')
+    result["cpuUsage"] = cpu_line.strip()
+
+    # Memory usage
+    stdin, stdout, stderr = ssh.exec_command("show processes memory | include Processor")
+    mem_line = stdout.read().decode('utf-8')
+    result["memoryUsage"] = mem_line.strip()
+
+    # Interface summary
+    stdin, stdout, stderr = ssh.exec_command("show ip interface brief")
+    int_output = stdout.read().decode('utf-8')
+    result["interfaces"] = parse_interface_status(int_output)
+
+    ssh.close()
+    return result
+
+
+def parse_interface_status(output):
+    interfaces = []
+    for line in output.splitlines():
+        if "Interface" in line or "unassigned" in line or "---" in line:
+            continue
+        parts = line.split()
+        if len(parts) >= 6:
+            interfaces.append({
+                "name": parts[0],
+                "ip": parts[1],
+                "status": parts[4],
+                "protocol": parts[5]
+            })
+    return interfaces
+
+@app.get("/api/device/{device_id}")
+def get_device_detail(device_id: int):
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+    c.execute("SELECT ip, username, password FROM device WHERE device_id = ?", (device_id,))
+    row = c.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Device not found")
+    ip, username, password = row
+
+    # 기존 DB 정보 + 실시간 상태 정보
+    device_info = {"id": device_id, "ip": ip, "username": username}
+
+    try:
+        status = fetch_status_info(ip, username, password)
+        device_info.update(status)
+    except:
+        device_info.update({"cpuUsage": "N/A", "memoryUsage": "N/A", "interfaces": []})
+
+    conn.close()
+    return device_info
+
 
 def main():
     """

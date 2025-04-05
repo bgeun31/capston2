@@ -1,89 +1,96 @@
-# app.py
-
 import sqlite3
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-
-# fetch_topology_snmpv3.py 에서 main() 함수를 import
+from pydantic import BaseModel
+import paramiko
 import fetch_topology_snmpv3
 
 app = FastAPI()
 
-# CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 운영 시엔 특정 도메인만 허용하는 것이 안전
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"]
 )
 
-# 서버가 실행될 때마다 자동으로 호출되는 함수
 @app.on_event("startup")
 def startup_event():
-    """
-    FastAPI 서버 uvicorn 구동 시 자동 호출:
-    - DB 초기화
-    - devices.yaml 기반으로 SNMP/CLI 정보를 수집해 DB에 반영
-    """
-    print("=== Startup event triggered ===")
     fetch_topology_snmpv3.main()
 
 @app.get("/api/topology")
 def get_topology():
-    """
-    DB의 device, link_info 정보를 조회하여 전체 토폴로지를 반환
-    """
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
-
-    # 노드 조회
-    nodes = []
-    for row in c.execute("SELECT device_id, name, ip, vendor FROM device"):
-        d = {
-            "id": row[0],
-            "name": row[1],
-            "ip": row[2],
-            "vendor": row[3]
-        }
-        nodes.append(d)
-
-    # 링크 조회
-    links = []
-    for row in c.execute("SELECT link_id, device_a, device_b, interface_a, interface_b FROM link_info"):
-        link = {
-            "id": row[0],
-            "source": row[1],
-            "target": row[2],
-            "ifaceA": row[3],
-            "ifaceB": row[4]
-        }
-        links.append(link)
-
+    nodes = [{"id": r[0], "name": r[1], "ip": r[2], "vendor": r[3]} for r in c.execute("SELECT device_id, name, ip, vendor FROM device")]
+    links = [{"id": r[0], "source": r[1], "target": r[2], "ifaceA": r[3], "ifaceB": r[4]} for r in c.execute("SELECT link_id, device_a, device_b, interface_a, interface_b FROM link_info")]
     conn.close()
     return {"nodes": nodes, "links": links}
 
-
 @app.get("/api/device/{device_id}")
 def get_device_detail(device_id: int):
-    """
-    특정 device_id에 대한 상세 정보를 조회하는 예시 엔드포인트
-    """
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
-
     c.execute("SELECT device_id, name, ip, vendor FROM device WHERE device_id = ?", (device_id,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return {"id": row[0], "name": row[1], "ip": row[2], "vendor": row[3]}
+
+class CLIRequest(BaseModel):
+    device_id: int
+    command: str
+
+@app.post("/api/device/cli")
+def execute_cli(req: CLIRequest):
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+    c.execute("SELECT ip, username, password FROM device WHERE device_id = ?", (req.device_id,))
     row = c.fetchone()
     if not row:
         conn.close()
-        return {"error": "Device not found"}
+        raise HTTPException(status_code=404, detail="Device not found")
 
-    device_info = {
-        "id": row[0],
-        "name": row[1],
-        "ip": row[2],
-        "vendor": row[3]
-        # 필요 시 추가 컬럼(예: sysName, cpuUsage 등)도 가져와서 여기에 넣을 수 있음
-    }
+    ip, username, password = row
 
+    try:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(ip, username=username, password=password, timeout=5)
+        stdin, stdout, stderr = ssh.exec_command(req.command)
+        output = stdout.read().decode('utf-8')
+        ssh.close()
+
+        # 히스토리 테이블 생성 + 저장
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS cli_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id INTEGER,
+                command TEXT,
+                output TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        c.execute("INSERT INTO cli_history (device_id, command, output) VALUES (?, ?, ?)",
+                  (req.device_id, req.command, output))
+        conn.commit()
+        conn.close()
+
+        return {"output": output}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/device/{device_id}/cli-history")
+def get_cli_history(device_id: int):
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+    c.execute('''
+        SELECT command, output, timestamp FROM cli_history
+        WHERE device_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 20
+    ''', (device_id,))
+    rows = c.fetchall()
     conn.close()
-    return device_info
+    return [{"command": r[0], "output": r[1], "timestamp": r[2]} for r in rows]
