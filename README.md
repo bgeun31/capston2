@@ -70,8 +70,8 @@ Router(config)# username song privilege 15 secret 1004
 
 # 백엔드, 프론트엔드 실행 명령어
  - 백엔드:
-```sh uvicorn backend:app --reload --host 0.0.0.0 --port 8000 ```
- - 프론트엔드: ```sh npx expo start ```
+```uvicorn backend:app --reload --host 0.0.0.0 --port 8000 ```
+ - 프론트엔드: ```npx expo start ```
 
 # 초기 작업
 1. python 설치, node.js 설치
