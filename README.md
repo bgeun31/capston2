@@ -1,8 +1,11 @@
 # SNMP 및 SSH 장비 설정방법
 1. 장비 내 SNMP 활성화
  Router(config)# ```snmp-server community <커뮤니티_문자열> RO```
+
+***
  - RO: 읽기 전용(데이터 조회만 가능)
  - RW: 읽기, 쓰기 전용(설정 변경 가능)
+***
 
  - Router(config)# ```access-list <리스트 번호> permit <허용할 PC IP>```
 
