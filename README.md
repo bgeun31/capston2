@@ -1,5 +1,4 @@
 # SNMP 및 SSH 장비 설정방법
-***
 1. 장비 내 SNMP 활성화
  - Router(config)# ```snmp-server community <커뮤니티_문자열> RO```
 
