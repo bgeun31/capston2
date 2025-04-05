@@ -6,48 +6,48 @@ Router(config)# snmp-server community <커뮤니티_문자열> RO
  - RO: 읽기 전용(데이터 조회만 가능)
  - RW: 읽기, 쓰기 전용(설정 변경 가능)
 
-```sh
+```
 Router(config)# access-list <리스트 번호> permit <허용할 PC IP>
 ```
-```sh
+```
 Router(config)# snmp-server community <커뮤니티_문자열> RO <리스트 번호>
 ```
 
 2. SNMPv3 설정 및 암호 적용
-```sh
+```
 Router(config)# snmp-server group <그룹명> v3 auth
 ```
-```sh
+```
 Router(config)# snmp-server user <사용자이름> <그룹명> v3 auth sha <암호> priv aes 128 <암호>
 ```
 4. Router SSH 설정
-```sh
+```
 Router(config)# hostname <장비 이름>
 ```
-```sh
+```
 Router(config)# ip domain-name example.com
 ```
-```sh
+```
 Router(config)# crypto key generate rsa
 ```
 moudle 1024로 설정
 이유: ssh version 2 쓰려면 812이상의 모듈을 사용해야함.
-```sh
+```
 Router(config)# ip ssh version 2
 ```
-```sh
+```
 Router(config)# line vty 0 4
 ```
-```sh
+```
 Router(config-line)# transport input ssh
 ```
-```sh
+```
 Router(config-line)# login local
 ```
-```sh
+```
 Router(config-line)# exit
 ```
-```sh
+```
 Router(config)# username <사용자 이름> privilege 15 secret <비밀번호>
 ```
 
