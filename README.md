@@ -12,43 +12,65 @@ Router(config)# ```snmp-server community <커뮤니티_문자열> RO <리스트 
 
 2. SNMPv3 설정 및 암호 적용
 Router(config)# ```snmp-server group <그룹명> v3 auth``` \n
+
 Router(config)# ```snmp-server user <사용자이름> <그룹명> v3 auth sha <암호> priv aes 128 <암호>
 
 4. Router SSH 설정
 Router(config)# ```hostname <장비 이름>```
+
 Router(config)# ```ip domain-name example.com```
+
 Router(config)# ```crypto key generate rsa```
+
 
 moudle 1024로 설정
 이유: ssh version 2 쓰려면 812이상의 모듈을 사용해야함.
 
 Router(config)# ```ip ssh version 2```
+
 Router(config)# ```line vty 0 4```
+
 Router(config-line)# ```transport input ssh```
+
 Router(config-line)# ```login local```
+
 Router(config-line)# ```exit```
+
 Router(config)# ```username <사용자 이름> privilege 15 secret <비밀번호>```
 
 # 현재 설정(2025-04-06)
 Router(config)# ```snmp-server community capston RO```
+
 Router(config)# ```access-list 10 permit 172.16.0.3```
+
 Router(config)# ```snmp-server community capston RO 10```
+
 Router(config)# ```snmp-server group nlab v3 auth```
+
 Router(config)# ```snmp-server user song nlab v3 auth sha bonggeun priv aes 128 bonggeun```
 
+
 Router(config)# ```hostname <장비 이름>```
+
 Router(config)# ```ip domain-name example.com```
+
 Router(config)# ```crypto key generate rsa```
+
 Router(config)# ```ip ssh version 2```
+
 Router(config)# ```line vty 0 4```
+
 Router(config-line)# ```transport input ssh```
+
 Router(config-line)# ```login local```
+
 Router(config-line)# ```exit```
+
 Router(config)# ```username song privilege 15 secret 1004```
 
 # 백엔드, 프론트엔드 실행 명령어
- - 백엔드:
-```uvicorn backend:app --reload --host 0.0.0.0 --port 8000 ```
+ - 백엔드: ```uvicorn backend:app --reload --host 0.0.0.0 --port 8000 ```
+
  - 프론트엔드: ```npx expo start ```
 
 # 초기 작업
