@@ -1,9 +1,8 @@
-★SNMP 장비(라우터) 설정방법
+★SNMP 및 SSH 장비 설정방법
 1. 장비 내 SNMP 활성화
 Router(config)# snmp-server community <커뮤니티_문자열> RO
  - RO: 읽기 전용(데이터 조회만 가능)
  - RW: 읽기, 쓰기 전용(설정 변경 가능)
- - 커뮤니티 문자열은 길고 복잡하게(보안 강화)
 
 Router(config)# access-list <리스트 번호> permit <허용할 PC IP>
 Router(config)# snmp-server community <커뮤니티_문자열> RO <리스트 번호>
@@ -12,9 +11,41 @@ Router(config)# snmp-server community <커뮤니티_문자열> RO <리스트 번
 Router(config)# snmp-server group <그룹명> v3 auth
 Router(config)# snmp-server user <사용자이름> <그룹명> v3 auth sha <암호> priv aes 128 <암호>
 
+3. Router SSH 설정
+Router(config)# hostname <장비 이름>
+Router(config)# ip domain-name example.com
+Router(config)# crypto key generate rsa
+
+moudle 1024로 설정
+이유: ssh version 2 쓰려면 812이상의 모듈을 사용해야함.
+
+Router(config)# ip ssh version 2
+Router(config)# line vty 0 4
+Router(config-line)# transport input ssh
+Router(config-line)# login local
+Router(config-line)# exit
+Router(config)# username <사용자 이름> privilege 15 secret <비밀번호>
+
+★현재 설정(2025-04-06)
+Router(config)# snmp-server community capston RO
+Router(config)# access-list 10 permit 172.16.0.3
+Router(config)# snmp-server community capston RO 10
+Router(config)# snmp-server group nlab v3 auth
+Router(config)# snmp-server user song nlab v3 auth sha bonggeun priv aes 128 bonggeun
+
+Router(config)# hostname <장비 이름>
+Router(config)# ip domain-name example.com
+Router(config)# crypto key generate rsa
+Router(config)# ip ssh version 2
+Router(config)# line vty 0 4
+Router(config-line)# transport input ssh
+Router(config-line)# login local
+Router(config-line)# exit
+Router(config)# username song privilege 15 secret 1004
+
 ★백엔드, 프론트엔드 실행 명령어
-백엔드: uvicorn backend:app --reload --host 0.0.0.0 --port 8000
-프론트엔드: npx expo start
+ - 백엔드: uvicorn backend:app --reload --host 0.0.0.0 --port 8000
+ - 프론트엔드: npx expo start
 
 ★초기 작업
 1. python 설치, node.js 설치
@@ -30,23 +61,9 @@ Router(config)# snmp-server user <사용자이름> <그룹명> v3 auth sha <암�
 3. File and Printer Sharing (Echo Request - ICMPv4-In) 규칙 활성화
 4. 혹은 파일 및 프린트 공유(Echo Request - ICMPv4-In) 규칙 활성화
 5. 도메인, 개인 둘다 활성화
+6. 방화벽 상태 확인 -> Windows Defender 방화벽 설정 또는 해제
 
 ★주의사항
 1. Router 게이트웨이 설정
 2. community_string 코드 수정
-3. SNMPv3를 사용하기 때문에 pysnmp.hlapi.v3arch.asyncio를 import 해야됨.
-
-★Router SSH 설정
-Router(config)# hostname <장비 이름>
-Router(config)# ip domain-name example.com
-Router(config)# crypto key generate rsa
-
-moudle 1024로 설정
-이유: ssh version 2 쓰려면 812이상의 모듈을 사용해야함.
-
-Router(config)# ip ssh version 2
-Router(config)# line vty 0 4
-Router(config-line)# transport input ssh
-Router(config-line)# login local
-Router(config-line)# exit
-Router(config)# username <사용자 이름> privilege 15 secret <비밀번호>
+3. pysnmp.hlapi를 사용하기 위해 pysnmp 라이브러리를 다운그레이드 해야함. (최신버전은 출시가 안됨.)
