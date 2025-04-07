@@ -66,7 +66,9 @@
 
 
 # 백엔드, 프론트엔드 실행 명령어
- - 백엔드: ```uvicorn app:app --reload --host 0.0.0.0 --port 8000 ```
+ - 백엔드: ```sh
+ uvicorn app:app --reload --host 0.0.0.0 --port 8000
+   ```
 
  - 프론트엔드: ```npm start ```
 
