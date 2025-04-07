@@ -66,12 +66,12 @@
 
 
 # 백엔드, 프론트엔드 실행 명령어
- - 백엔드:
+ - 백엔드(폴더명: backend 확인):
 ```sh
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
 ```
 
- - 프론트엔드:
+ - 프론트엔드(폴더명: topology-web 확인):
 ```sh
 npm start
 ```
