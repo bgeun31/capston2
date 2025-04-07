@@ -11,7 +11,7 @@ from pysnmp.hlapi import (
     usmAesCfb128Protocol
 )
 
-from backend import app
+# from backend import app
 
 def init_db(db_path="devices.db"):
     """
@@ -25,7 +25,9 @@ def init_db(db_path="devices.db"):
       device_id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT,
       ip TEXT,
-      vendor TEXT
+      vendor TEXT,
+      username TEXT,
+      password TEXT
     )
     ''')
 
@@ -42,14 +44,14 @@ def init_db(db_path="devices.db"):
     conn.commit()
     conn.close()
 
-def insert_device(name, ip, vendor, db_path="devices.db"):
+def insert_device(name, ip, vendor, username, password, db_path="devices.db"):
     """
     device 테이블에 신규 장비 등록
     (중복 방지를 위해 UNIQUE 키 등을 걸고 싶다면 schema/쿼리 수정)
     """
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
-    c.execute("INSERT INTO device (name, ip, vendor) VALUES (?, ?, ?)", (name, ip, vendor))
+    c.execute("INSERT INTO device (name, ip, vendor, username, password) VALUES (?, ?, ?, ?, ?)", (name, ip, vendor, username, password))
     device_id = c.lastrowid
     conn.commit()
     conn.close()
@@ -139,29 +141,6 @@ def parse_interface_status(output):
             })
     return interfaces
 
-@app.get("/api/device/{device_id}")
-def get_device_detail(device_id: int):
-    conn = sqlite3.connect("devices.db")
-    c = conn.cursor()
-    c.execute("SELECT ip, username, password FROM device WHERE device_id = ?", (device_id,))
-    row = c.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Device not found")
-    ip, username, password = row
-
-    # 기존 DB 정보 + 실시간 상태 정보
-    device_info = {"id": device_id, "ip": ip, "username": username}
-
-    try:
-        status = fetch_status_info(ip, username, password)
-        device_info.update(status)
-    except:
-        device_info.update({"cpuUsage": "N/A", "memoryUsage": "N/A", "interfaces": []})
-
-    conn.close()
-    return device_info
-
-
 def main():
     """
     fetch_topology_snmpv3의 핵심 함수
@@ -183,7 +162,7 @@ def main():
         vendor = dev.get("vendor", "unknown")
 
         # device 테이블에 insert
-        d_id = insert_device(name, ip, vendor)
+        d_id = insert_device(name, ip, vendor, dev["username"], dev["password"])
         device_id_map[name] = d_id
 
         # SNMP 수집 (sysName 등)
@@ -209,7 +188,7 @@ def main():
                 for (nbrName, localIf, remoteIf) in neighbors:
                     if nbrName not in device_id_map:
                         # 아직 DB에 없는 neighbor 라면 임시 등록
-                        nd_id = insert_device(nbrName, "0.0.0.0", "unknown")
+                        nd_id = insert_device(nbrName, "0.0.0.0", "unknown", "dummy", "dummy")
                         device_id_map[nbrName] = nd_id
                     insert_link(d_id, device_id_map[nbrName], localIf, remoteIf)
             except Exception as ex:

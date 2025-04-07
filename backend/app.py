@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import paramiko
 import fetch_topology_snmpv3
+from fetch_topology_snmpv3 import fetch_snmpv3_info, fetch_status_info
 
 app = FastAPI()
 
@@ -26,17 +27,6 @@ def get_topology():
     links = [{"id": r[0], "source": r[1], "target": r[2], "ifaceA": r[3], "ifaceB": r[4]} for r in c.execute("SELECT link_id, device_a, device_b, interface_a, interface_b FROM link_info")]
     conn.close()
     return {"nodes": nodes, "links": links}
-
-@app.get("/api/device/{device_id}")
-def get_device_detail(device_id: int):
-    conn = sqlite3.connect("devices.db")
-    c = conn.cursor()
-    c.execute("SELECT device_id, name, ip, vendor FROM device WHERE device_id = ?", (device_id,))
-    row = c.fetchone()
-    conn.close()
-    if not row:
-        raise HTTPException(status_code=404, detail="Device not found")
-    return {"id": row[0], "name": row[1], "ip": row[2], "vendor": row[3]}
 
 class CLIRequest(BaseModel):
     device_id: int
@@ -80,6 +70,40 @@ def execute_cli(req: CLIRequest):
         return {"output": output}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.get("/api/device/{device_id}")
+def get_device_detail(device_id: int):
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+    c.execute("SELECT device_id, name, ip, vendor, username, password FROM device WHERE device_id = ?", (device_id,))
+    row = c.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    device_id, name, ip, vendor, username, password = row
+    device_info = {
+        "id": device_id,
+        "name": name,
+        "ip": ip,
+        "vendor": vendor
+    }
+
+    try:
+        snmp_val = fetch_snmpv3_info(ip, username, password, password)
+        if snmp_val:
+            device_info["sysName"] = snmp_val
+    except Exception as e:
+        print(f"[SNMP] {ip} 실패: {e}")
+
+    try:
+        status = fetch_status_info(ip, username, password)
+        device_info.update(status or {})
+    except Exception as e:
+        print(f"[CLI] {ip} 상태 수집 실패: {e}")
+
+    return device_info
 
 @app.get("/api/device/{device_id}/cli-history")
 def get_cli_history(device_id: int):

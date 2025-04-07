@@ -54,6 +54,7 @@ function App() {
   };
 
   const getPercentageFromCPU = (text) => {
+    if (!text || typeof text !== "string") return 0;
     const match = text.match(/(\d+)%/);
     return match ? parseInt(match[1]) : 0;
   };
@@ -90,15 +91,14 @@ function App() {
               <div style={{ padding: "10px" }}>
                 <p><strong>ID:</strong> {selectedDevice.id}</p>
                 <p><strong>IP:</strong> {selectedDevice.ip}</p>
-                <p><strong>Vendor:</strong> {selectedDevice.vendor}</p>
-                <hr />
-                <p><strong>sysName:</strong> {selectedDevice.sysName}</p>
-                <p><strong>sysDescr:</strong> {selectedDevice.sysDescr}</p>
-                <p><strong>Uptime:</strong> {selectedDevice.uptime}</p>
-                <p><strong>Hostname:</strong> {selectedDevice.hostname}</p>
-                <p><strong>Model:</strong> {selectedDevice.model}</p>
-                <p><strong>Version:</strong> {selectedDevice.version}</p>
-                <p><strong>Interface Count:</strong> {selectedDevice.interfaceCount}</p>
+                <p><strong>Vendor:</strong> {selectedDevice.vendor || "N/A"}</p>
+                <p><strong>sysName:</strong> {selectedDevice.sysName || "N/A"}</p>
+                <p><strong>sysDescr:</strong> {selectedDevice.sysDescr || "N/A"}</p>
+                <p><strong>Uptime:</strong> {selectedDevice.uptime || "N/A"}</p>
+                <p><strong>Hostname:</strong> {selectedDevice.hostname || "N/A"}</p>
+                <p><strong>Model:</strong> {selectedDevice.model || "N/A"}</p>
+                <p><strong>Version:</strong> {selectedDevice.version || "N/A"}</p>
+                <p><strong>Interface Count:</strong> {selectedDevice.interfaceCount || "N/A"}</p>
               </div>
             )}
 
