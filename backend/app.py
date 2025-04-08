@@ -1,10 +1,12 @@
+# app.py
+
 import sqlite3
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import paramiko
 import fetch_topology_snmpv3
-from fetch_topology_snmpv3 import fetch_snmpv3_info, fetch_status_info
+from fetch_topology_snmpv3 import fetch_snmpv3_info, fetch_status_info, fetch_device_info
 
 app = FastAPI()
 
@@ -17,14 +19,21 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup_event():
+    # 서버 부팅 시 DB초기화 + SNMP/CLI 토폴로지 수집
     fetch_topology_snmpv3.main()
 
 @app.get("/api/topology")
 def get_topology():
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
-    nodes = [{"id": r[0], "name": r[1], "ip": r[2], "vendor": r[3]} for r in c.execute("SELECT device_id, name, ip, vendor FROM device")]
-    links = [{"id": r[0], "source": r[1], "target": r[2], "ifaceA": r[3], "ifaceB": r[4]} for r in c.execute("SELECT link_id, device_a, device_b, interface_a, interface_b FROM link_info")]
+    nodes = [
+        {"id": row[0], "name": row[1], "ip": row[2], "vendor": row[3]}
+        for row in c.execute("SELECT device_id, name, ip, vendor FROM device")
+    ]
+    links = [
+        {"id": row[0], "source": row[1], "target": row[2], "ifaceA": row[3], "ifaceB": row[4]}
+        for row in c.execute("SELECT link_id, device_a, device_b, interface_a, interface_b FROM link_info")
+    ]
     conn.close()
     return {"nodes": nodes, "links": links}
 
@@ -49,10 +58,9 @@ def execute_cli(req: CLIRequest):
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(ip, username=username, password=password, timeout=5)
         stdin, stdout, stderr = ssh.exec_command(req.command)
-        output = stdout.read().decode('utf-8')
+        output = stdout.read().decode('utf-8', errors='ignore')
         ssh.close()
 
-        # 히스토리 테이블 생성 + 저장
         c.execute('''
             CREATE TABLE IF NOT EXISTS cli_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,48 +78,55 @@ def execute_cli(req: CLIRequest):
         return {"output": output}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
 @app.get("/api/device/{device_id}")
 def get_device_detail(device_id: int):
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
-    c.execute("SELECT device_id, name, ip, vendor, username, password FROM device WHERE device_id = ?", (device_id,))
+    c.execute("""
+        SELECT device_id, name, ip, vendor, username, password
+        FROM device
+        WHERE device_id = ?
+    """, (device_id,))
     row = c.fetchone()
     conn.close()
 
     if not row:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    device_id, name, ip, vendor, username, password = row
+    dev_id, name, ip, vendor, username, password = row
+
+    # 1) 기본 정보 (SNMP 값은 재조회X => N/A or DB저장X)
     device_info = {
-        "id": device_id,
+        "id": dev_id,
         "name": name,
         "ip": ip,
-        "vendor": vendor
+        "vendor": vendor,
+        "sysName": "N/A",
+        "sysDescr": "N/A",
+        "uptime": "N/A"
     }
 
-    try:
-        snmp_vals = fetch_snmpv3_info(ip, username, password, password)
-        if isinstance(snmp_vals, dict):
-            device_info.update(snmp_vals)
-    except Exception as e:
-        print(f"[SNMP] {ip} 실패: {e}")
+    # 2) hostname, model, version, interfaceCount
+    dev_details = fetch_topology_snmpv3.fetch_device_info(ip, username, password)
+    device_info.update(dev_details)
 
-    try:
-        status = fetch_status_info(ip, username, password)
-        device_info.update(status or {})
-    except Exception as e:
-        print(f"[CLI] {ip} 상태 수집 실패: {e}")
+    # 3) CPU, mem, interfaces
+    status = fetch_status_info(ip, username, password)
+    device_info.update(status or {})
+
+    # (선택) SNMP로 sysName etc 재조회하려면
+    #  auth_pw, priv_pw도 DB에 있어야 가능
 
     return device_info
-
 
 @app.get("/api/device/{device_id}/cli-history")
 def get_cli_history(device_id: int):
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
     c.execute('''
-        SELECT command, output, timestamp FROM cli_history
+        SELECT command, output, timestamp
+        FROM cli_history
         WHERE device_id = ?
         ORDER BY timestamp DESC
         LIMIT 20
