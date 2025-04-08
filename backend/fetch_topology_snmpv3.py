@@ -82,49 +82,58 @@ def fetch_cli_info(ip, username, password, vendor):
     return matches
 
 def fetch_snmpv3_info(ip, username, auth_pw, priv_pw):
-    """
-    SNMPv3로 sysName(1.3.6.1.2.1.1.5.0)을 가져오는 예시
-    """
-    iterator = getCmd(
-        SnmpEngine(),
-        UsmUserData(username, auth_pw, priv_pw,
-                    authProtocol=usmHMACSHAAuthProtocol,
-                    privProtocol=usmAesCfb128Protocol),
-        UdpTransportTarget((ip, 161)),
-        ContextData(),
-        ObjectType(ObjectIdentity('1.3.6.1.2.1.1.5.0'))
-    )
-    errorIndication, errorStatus, errorIndex, varBinds = next(iterator)
-    if errorIndication or errorStatus:
-        return None
-    for varBind in varBinds:
-        return str(varBind[1])
+    result = {}
+    oids = {
+        "sysName": '1.3.6.1.2.1.1.5.0',
+        "sysDescr": '1.3.6.1.2.1.1.1.0',
+        "uptime": '1.3.6.1.2.1.1.3.0'
+    }
+
+    for key, oid in oids.items():
+        iterator = getCmd(
+            SnmpEngine(),
+            UsmUserData(username, auth_pw, priv_pw,
+                        authProtocol=usmHMACSHAAuthProtocol,
+                        privProtocol=usmAesCfb128Protocol),
+            UdpTransportTarget((ip, 161)),
+            ContextData(),
+            ObjectType(ObjectIdentity(oid))
+        )
+        errorIndication, errorStatus, errorIndex, varBinds = next(iterator)
+        if errorIndication or errorStatus:
+            print(f"[SNMPv3] {ip} OID {oid} fetch error: {errorIndication or errorStatus}")
+            result[key] = "N/A"
+        else:
+            result[key] = str(varBinds[0][1])
+
+    return result
     
 def fetch_status_info(ip, username, password):
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(ip, username=username, password=password, timeout=5)
+    try:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(ip, username=username, password=password, timeout=5)
 
-    result = {}
+        result = {}
+        stdin, stdout, stderr = ssh.exec_command("show processes cpu | include CPU utilization")
+        result["cpuUsage"] = stdout.read().decode('utf-8').strip()
 
-    # CPU usage
-    stdin, stdout, stderr = ssh.exec_command("show processes cpu | include CPU utilization")
-    cpu_line = stdout.read().decode('utf-8')
-    result["cpuUsage"] = cpu_line.strip()
+        stdin, stdout, stderr = ssh.exec_command("show processes memory | include Processor")
+        result["memoryUsage"] = stdout.read().decode('utf-8').strip()
 
-    # Memory usage
-    stdin, stdout, stderr = ssh.exec_command("show processes memory | include Processor")
-    mem_line = stdout.read().decode('utf-8')
-    result["memoryUsage"] = mem_line.strip()
+        stdin, stdout, stderr = ssh.exec_command("show ip interface brief")
+        result["interfaces"] = parse_interface_status(stdout.read().decode('utf-8'))
 
-    # Interface summary
-    stdin, stdout, stderr = ssh.exec_command("show ip interface brief")
-    int_output = stdout.read().decode('utf-8')
-    result["interfaces"] = parse_interface_status(int_output)
+        ssh.close()
+        return result
 
-    ssh.close()
-    return result
-
+    except Exception as e:
+        print(f"[CLI fetch_status_info] Error for {ip}: {e}")
+        return {
+            "cpuUsage": "N/A",
+            "memoryUsage": "N/A",
+            "interfaces": []
+        }
 
 def parse_interface_status(output):
     interfaces = []
@@ -150,6 +159,14 @@ def main():
     - device / link_info 테이블에 insert
     """
     init_db()  # 없으면 테이블 생성
+
+     # 중복 방지를 위한 초기화
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM link_info")
+    c.execute("DELETE FROM device")
+    conn.commit()
+    conn.close()
 
     with open("devices.yaml", "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
@@ -188,7 +205,7 @@ def main():
                 for (nbrName, localIf, remoteIf) in neighbors:
                     if nbrName not in device_id_map:
                         # 아직 DB에 없는 neighbor 라면 임시 등록
-                        nd_id = insert_device(nbrName, "0.0.0.0", "unknown", "dummy", "dummy")
+                        nd_id = insert_device(nbrName, "0.0.0.0", "unknown", "dummy", "dummy")  # CDP neighbor 임시등록
                         device_id_map[nbrName] = nd_id
                     insert_link(d_id, device_id_map[nbrName], localIf, remoteIf)
             except Exception as ex:

@@ -91,9 +91,9 @@ def get_device_detail(device_id: int):
     }
 
     try:
-        snmp_val = fetch_snmpv3_info(ip, username, password, password)
-        if snmp_val:
-            device_info["sysName"] = snmp_val
+        snmp_vals = fetch_snmpv3_info(ip, username, password, password)
+        if isinstance(snmp_vals, dict):
+            device_info.update(snmp_vals)
     except Exception as e:
         print(f"[SNMP] {ip} 실패: {e}")
 
@@ -104,6 +104,7 @@ def get_device_detail(device_id: int):
         print(f"[CLI] {ip} 상태 수집 실패: {e}")
 
     return device_info
+
 
 @app.get("/api/device/{device_id}/cli-history")
 def get_cli_history(device_id: int):
