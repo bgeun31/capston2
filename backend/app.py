@@ -6,7 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import paramiko
 import fetch_topology_snmpv3
-from fetch_topology_snmpv3 import fetch_snmpv3_info, fetch_status_info, fetch_device_info
+from fetch_topology_snmpv3 import (
+    fetch_snmpv3_info,
+    fetch_status_info_invoke,
+    fetch_device_info_invoke
+)
 
 app = FastAPI()
 
@@ -19,7 +23,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup_event():
-    # 서버 부팅 시 DB초기화 + SNMP/CLI 토폴로지 수집
+    # 부팅 시 DB 초기화 + CDP link
     fetch_topology_snmpv3.main()
 
 @app.get("/api/topology")
@@ -43,6 +47,9 @@ class CLIRequest(BaseModel):
 
 @app.post("/api/device/cli")
 def execute_cli(req: CLIRequest):
+    """
+    임의 CLI 명령어
+    """
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
     c.execute("SELECT ip, username, password FROM device WHERE device_id = ?", (req.device_id,))
@@ -52,15 +59,26 @@ def execute_cli(req: CLIRequest):
         raise HTTPException(status_code=404, detail="Device not found")
 
     ip, username, password = row
+    conn.close()
 
+    # invoke_shell()로 임의 명령 실행
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(ip, username=username, password=password, timeout=5)
-        stdin, stdout, stderr = ssh.exec_command(req.command)
-        output = stdout.read().decode('utf-8', errors='ignore')
+        channel = ssh.invoke_shell()
+        import time
+        time.sleep(1)
+        channel.send("terminal length 0\n")
+        time.sleep(1)
+        channel.send(req.command + "\n")
+        time.sleep(2)
+        output = channel.recv(65535).decode('utf-8', 'ignore')
         ssh.close()
 
+        # 히스토리 저장
+        conn = sqlite3.connect("devices.db")
+        c = conn.cursor()
         c.execute('''
             CREATE TABLE IF NOT EXISTS cli_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,6 +99,9 @@ def execute_cli(req: CLIRequest):
 
 @app.get("/api/device/{device_id}")
 def get_device_detail(device_id: int):
+    """
+    장비 정보 + 상태 요약
+    """
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
     c.execute("""
@@ -96,7 +117,7 @@ def get_device_detail(device_id: int):
 
     dev_id, name, ip, vendor, username, password = row
 
-    # 1) 기본 정보 (SNMP 값은 재조회X => N/A or DB저장X)
+    # SNMP는 DB에 SNMP pw 없으므로 재조회X → N/A
     device_info = {
         "id": dev_id,
         "name": name,
@@ -107,16 +128,13 @@ def get_device_detail(device_id: int):
         "uptime": "N/A"
     }
 
-    # 2) hostname, model, version, interfaceCount
-    dev_details = fetch_topology_snmpv3.fetch_device_info(ip, username, password)
+    # invoke_shell()로 Hostname/Model/Version/InterfaceCount
+    dev_details = fetch_topology_snmpv3.fetch_device_info_invoke(ip, username, password)
     device_info.update(dev_details)
 
-    # 3) CPU, mem, interfaces
-    status = fetch_status_info(ip, username, password)
-    device_info.update(status or {})
-
-    # (선택) SNMP로 sysName etc 재조회하려면
-    #  auth_pw, priv_pw도 DB에 있어야 가능
+    # invoke_shell()로 CPU/메모리/Interfaces
+    status_info = fetch_topology_snmpv3.fetch_status_info_invoke(ip, username, password)
+    device_info.update(status_info)
 
     return device_info
 
@@ -133,4 +151,8 @@ def get_cli_history(device_id: int):
     ''', (device_id,))
     rows = c.fetchall()
     conn.close()
-    return [{"command": r[0], "output": r[1], "timestamp": r[2]} for r in rows]
+
+    return [
+        {"command": r[0], "output": r[1], "timestamp": r[2]}
+    for r in rows
+    ]

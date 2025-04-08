@@ -37,7 +37,6 @@ def init_db(db_path="devices.db"):
     conn.commit()
     conn.close()
 
-
 def insert_device(name, ip, vendor, username, password, db_path="devices.db"):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -60,34 +59,41 @@ def insert_link(device_a, device_b, iface_a, iface_b, db_path="devices.db"):
     conn.commit()
     conn.close()
 
-def fetch_cli_info(ip, username, password):
+def fetch_cli_info_invoke(ip, username, password):
     """
-    SSH로 'show cdp neighbors' → (neighborName, localIf, remoteIf) 리스트 반환
+    invoke_shell()로 대화형 세션을 열고, show cdp neighbors 실행
     """
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(ip, username=username, password=password, timeout=5)
 
-    # 페이지 없이 전체 출력
-    ssh.exec_command("terminal length 0")
-    time.sleep(0.5)
+    channel = ssh.invoke_shell()
+    time.sleep(1)
 
-    # show cdp neighbors
-    stdin, stdout, stderr = ssh.exec_command("show cdp neighbors")
-    cdp_out = stdout.read().decode('utf-8', errors='ignore')
-    cdp_err = stderr.read().decode('utf-8', errors='ignore')
+    # (필요시 enable 모드 진입)
+    # channel.send('enable\n')
+    # time.sleep(1)
+    # channel.send('your_enable_password\n')
+    # time.sleep(1)
+
+    channel.send("terminal length 0\n")
+    time.sleep(1)
+
+    # CDP 이웃 조회
+    channel.send("show cdp neighbors\n")
+    time.sleep(1)
+
+    output = channel.recv(65535).decode('utf-8', errors='ignore')
     ssh.close()
 
-    print(f"[DEBUG] cdp neighbors stdout = {cdp_out.strip()}")
-    print(f"[DEBUG] cdp neighbors stderr = {cdp_err.strip()}")
-
+    # 정규식 파싱
     pattern = r"(?P<remotedevice>\S+)\s+(?P<localif>\S+\s+\S+)\s+\d+\s+\S+\s+\S+\s+(?P<remoteif>\S+\s+\S+)"
-    matches = re.findall(pattern, cdp_out)
+    matches = re.findall(pattern, output)
     return matches
 
 def fetch_snmpv3_info(ip, username, auth_pw, priv_pw):
     """
-    SNMPv3로 sysName, sysDescr, uptime 등 가져오는 예시
+    SNMPv3 sysName, sysDescr, uptime
     """
     result = {}
     oids = {
@@ -113,67 +119,59 @@ def fetch_snmpv3_info(ip, username, auth_pw, priv_pw):
             result[key] = str(varBinds[0][1])
     return result
 
-def fetch_status_info(ip, username, password):
+def fetch_status_info_invoke(ip, username, password):
     """
-    CPU/Memory/Interfaces 등 상태
+    invoke_shell()로 CPU, Mem, Interfaces
     """
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(ip, username=username, password=password, timeout=5)
 
-        result = {}
-        ssh.exec_command("terminal length 0")
-        time.sleep(0.5)
+        channel = ssh.invoke_shell()
+        time.sleep(1)
+
+        channel.send("terminal length 0\n")
+        time.sleep(1)
 
         # CPU
-        stdin, stdout, stderr = ssh.exec_command("show processes cpu | include CPU utilization")
-        cpu_out = stdout.read().decode('utf-8', errors='ignore').strip()
-        result["cpuUsage"] = cpu_out
+        channel.send("show processes cpu | include CPU utilization\n")
+        time.sleep(1)
+        out1 = channel.recv(65535).decode('utf-8', 'ignore')
 
         # Memory
-        stdin, stdout, stderr = ssh.exec_command("show processes memory | include Processor")
-        mem_out = stdout.read().decode('utf-8', errors='ignore').strip()
-        result["memoryUsage"] = mem_out
+        channel.send("show processes memory | include Processor\n")
+        time.sleep(1)
+        out2 = channel.recv(65535).decode('utf-8', 'ignore')
 
         # Interfaces
-        stdin, stdout, stderr = ssh.exec_command("show ip interface brief")
-        int_out = stdout.read().decode('utf-8', errors='ignore')
-        result["interfaces"] = parse_interface_status(int_out)
+        channel.send("show ip interface brief\n")
+        time.sleep(1)
+        out3 = channel.recv(65535).decode('utf-8', 'ignore')
 
         ssh.close()
+
+        # 파싱
+        result = {}
+        result["cpuUsage"] = out1.strip()
+        result["memoryUsage"] = out2.strip()
+        result["interfaces"] = parse_interface_status(out3)
         return result
 
     except Exception as e:
-        print(f"[CLI fetch_status_info] Error for {ip}: {e}")
+        print(f"[CLI fetch_status_info_invoke] Error for {ip}: {e}")
         return {
             "cpuUsage": "N/A",
             "memoryUsage": "N/A",
             "interfaces": []
         }
 
-def parse_interface_status(output):
-    interfaces = []
-    for line in output.splitlines():
-        if "Interface" in line or "unassigned" in line or "---" in line:
-            continue
-        parts = line.split()
-        if len(parts) >= 6:
-            interfaces.append({
-                "name": parts[0],
-                "ip": parts[1],
-                "status": parts[4],
-                "protocol": parts[5]
-            })
-    return interfaces
-
-def fetch_device_info(ip, username, password):
+def fetch_device_info_invoke(ip, username, password):
     """
-    show version -> hostname, model, version
-    show ip interface brief -> interfaceCount
+    invoke_shell()로 show version, show ip interface brief
+    => hostname, model, version, interfaceCount
     """
     import re
-
     result = {
         "hostname": "N/A",
         "model": "N/A",
@@ -185,35 +183,38 @@ def fetch_device_info(ip, username, password):
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(ip, username=username, password=password, timeout=5)
 
-        # terminal length
-        ssh.exec_command("terminal length 0")
-        time.sleep(0.5)
+        channel = ssh.invoke_shell()
+        time.sleep(1)
+
+        channel.send("terminal length 0\n")
+        time.sleep(1)
 
         # show version
-        stdin, stdout, stderr = ssh.exec_command("show version")
-        ver_output = stdout.read().decode('utf-8', errors='ignore')
-        ssh_err = stderr.read().decode('utf-8', errors='ignore')
+        channel.send("show version\n")
+        time.sleep(2)
+        ver_output = channel.recv(65535).decode('utf-8', 'ignore')
 
-        # hostname ex) "R1 uptime is..."
+        # hostname
         host_match = re.search(r"^(\S+)\s+uptime is", ver_output, re.MULTILINE)
         if host_match:
             result["hostname"] = host_match.group(1)
 
-        # version ex) "Version 15.5(3)M2"
+        # version
         ver_match = re.search(r"Version\s+([\d()\.A-Za-z]+)", ver_output)
         if ver_match:
             result["version"] = ver_match.group(1)
 
-        # model ex) "Cisco 2911"...
+        # model
         model_match = re.search(r"Cisco\s+(\S+)\s+.*processor", ver_output, re.IGNORECASE)
         if model_match:
             result["model"] = model_match.group(1)
 
-        # show ip interface brief -> interface count
-        stdin, stdout, stderr = ssh.exec_command("show ip interface brief")
-        int_output = stdout.read().decode('utf-8', errors='ignore')
-        lines = int_output.strip().splitlines()
+        # show ip interface brief -> interfaceCount
+        channel.send("show ip interface brief\n")
+        time.sleep(2)
+        int_output = channel.recv(65535).decode('utf-8', 'ignore')
 
+        lines = int_output.strip().splitlines()
         count = 0
         for ln in lines:
             if "Interface" in ln or "unassigned" in ln or "---" in ln:
@@ -224,11 +225,26 @@ def fetch_device_info(ip, username, password):
         result["interfaceCount"] = count
 
         ssh.close()
-
     except Exception as e:
-        print(f"[fetch_device_info] Error for {ip}: {e}")
+        print(f"[fetch_device_info_invoke] Error for {ip}: {e}")
 
     return result
+
+def parse_interface_status(output):
+    interfaces = []
+    lines = output.splitlines()
+    for line in lines:
+        if "Interface" in line or "unassigned" in line or "---" in line:
+            continue
+        parts = line.split()
+        if len(parts) >= 6:
+            interfaces.append({
+                "name": parts[0],
+                "ip": parts[1],
+                "status": parts[4],
+                "protocol": parts[5]
+            })
+    return interfaces
 
 def main():
     init_db()
@@ -245,17 +261,16 @@ def main():
         config = yaml.safe_load(f)
 
     device_id_map = {}
-
     for dev in config["devices"]:
         name   = dev["name"]
         ip     = dev["ip"]
         vendor = dev.get("vendor", "unknown")
 
-        # DB에 device 저장
+        # insert device
         d_id = insert_device(name, ip, vendor, dev["username"], dev["password"])
         device_id_map[name] = d_id
 
-        # SNMP sysName 등 콘솔 출력 (DB 저장 X)
+        # SNMP (옵션)
         if dev.get("snmp", False):
             try:
                 snmp_info = fetch_snmpv3_info(
@@ -268,10 +283,10 @@ def main():
             except Exception as e:
                 print(f"[SNMPv3] error on {name}: {e}")
 
-        # CLI -> CDP neighbors
+        # CLI -> cdp neighbors
         if dev.get("cli", False):
             try:
-                neighbors = fetch_cli_info(ip, dev["username"], dev["password"])
+                neighbors = fetch_cli_info_invoke(ip, dev["username"], dev["password"])
                 for (nbrName, localIf, remoteIf) in neighbors:
                     if nbrName not in device_id_map:
                         nd_id = insert_device(nbrName, "0.0.0.0", "unknown", "dummy", "dummy")
@@ -281,6 +296,3 @@ def main():
                 print(f"[CLI] fetch failed for {name}({ip}): {ex}")
 
     print("=== Done fetching device/link info ===")
-
-if __name__ == "__main__":
-    main()
