@@ -1,4 +1,4 @@
-# app.py
+# app.py (수정본 - 캐시 기반 + 데이터 없을 때 예외 처리 추가)
 
 import sqlite3
 from fastapi import FastAPI, HTTPException
@@ -6,11 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import paramiko
 import fetch_topology_snmpv3
-from fetch_topology_snmpv3 import (
-    fetch_snmpv3_info,
-    fetch_status_info_invoke,
-    fetch_device_info_invoke
-)
+import json
+import os
 
 app = FastAPI()
 
@@ -23,21 +20,29 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup_event():
-    # 부팅 시 DB 초기화 + CDP link
-    fetch_topology_snmpv3.main()
+    if os.path.exists("devices.yaml"):
+        fetch_topology_snmpv3.main()
+    else:
+        print("[WARNING] devices.yaml 파일이 없어 초기화가 생략됩니다.")
 
 @app.get("/api/topology")
 def get_topology():
+    if not os.path.exists("devices.db"):
+        return {"nodes": [], "links": []}
+
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
-    nodes = [
-        {"id": row[0], "name": row[1], "ip": row[2], "vendor": row[3]}
-        for row in c.execute("SELECT device_id, name, ip, vendor FROM device")
-    ]
-    links = [
-        {"id": row[0], "source": row[1], "target": row[2], "ifaceA": row[3], "ifaceB": row[4]}
-        for row in c.execute("SELECT link_id, device_a, device_b, interface_a, interface_b FROM link_info")
-    ]
+    try:
+        nodes = [
+            {"id": row[0], "name": row[1], "ip": row[2], "vendor": row[3]}
+            for row in c.execute("SELECT device_id, name, ip, vendor FROM device")
+        ]
+        links = [
+            {"id": row[0], "source": row[1], "target": row[2], "ifaceA": row[3], "ifaceB": row[4]}
+            for row in c.execute("SELECT link_id, device_a, device_b, interface_a, interface_b FROM link_info")
+        ]
+    except Exception as e:
+        nodes, links = [], []
     conn.close()
     return {"nodes": nodes, "links": links}
 
@@ -47,9 +52,6 @@ class CLIRequest(BaseModel):
 
 @app.post("/api/device/cli")
 def execute_cli(req: CLIRequest):
-    """
-    임의 CLI 명령어
-    """
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
     c.execute("SELECT ip, username, password FROM device WHERE device_id = ?", (req.device_id,))
@@ -61,7 +63,6 @@ def execute_cli(req: CLIRequest):
     ip, username, password = row
     conn.close()
 
-    # invoke_shell()로 임의 명령 실행
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -76,7 +77,6 @@ def execute_cli(req: CLIRequest):
         output = channel.recv(65535).decode('utf-8', 'ignore')
         ssh.close()
 
-        # 히스토리 저장
         conn = sqlite3.connect("devices.db")
         c = conn.cursor()
         c.execute('''
@@ -99,60 +99,59 @@ def execute_cli(req: CLIRequest):
 
 @app.get("/api/device/{device_id}")
 def get_device_detail(device_id: int):
-    """
-    장비 정보 + 상태 요약
-    """
+    if not os.path.exists("devices.db"):
+        raise HTTPException(status_code=404, detail="Device DB not found")
+
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
-    c.execute("""
-        SELECT device_id, name, ip, vendor, username, password
-        FROM device
-        WHERE device_id = ?
-    """, (device_id,))
-    row = c.fetchone()
+    try:
+        c.execute("SELECT json FROM device_cache WHERE device_id = ?", (device_id,))
+        row = c.fetchone()
+    except Exception:
+        row = None
     conn.close()
 
-    if not row:
-        raise HTTPException(status_code=404, detail="Device not found")
+    if not row or not row[0]:
+        return {
+            "id": device_id,
+            "name": f"장비 {device_id}",
+            "ip": "0.0.0.0",
+            "vendor": "unknown",
+            "sysName": "N/A",
+            "sysDescr": "N/A",
+            "uptime": "N/A",
+            "hostname": "N/A",
+            "model": "N/A",
+            "version": "N/A",
+            "interfaceCount": 0,
+            "cpuUsage": "N/A",
+            "memoryUsage": "N/A",
+            "interfaces": []
+        }
 
-    dev_id, name, ip, vendor, username, password = row
-
-    # SNMP는 DB에 SNMP pw 없으므로 재조회X → N/A
-    device_info = {
-        "id": dev_id,
-        "name": name,
-        "ip": ip,
-        "vendor": vendor,
-        "sysName": "N/A",
-        "sysDescr": "N/A",
-        "uptime": "N/A"
-    }
-
-    # invoke_shell()로 Hostname/Model/Version/InterfaceCount
-    dev_details = fetch_topology_snmpv3.fetch_device_info_invoke(ip, username, password)
-    device_info.update(dev_details)
-
-    # invoke_shell()로 CPU/메모리/Interfaces
-    status_info = fetch_topology_snmpv3.fetch_status_info_invoke(ip, username, password)
-    device_info.update(status_info)
-
-    return device_info
+    return json.loads(row[0])
 
 @app.get("/api/device/{device_id}/cli-history")
 def get_cli_history(device_id: int):
+    if not os.path.exists("devices.db"):
+        return []
+
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
-    c.execute('''
-        SELECT command, output, timestamp
-        FROM cli_history
-        WHERE device_id = ?
-        ORDER BY timestamp DESC
-        LIMIT 20
-    ''', (device_id,))
-    rows = c.fetchall()
+    try:
+        c.execute('''
+            SELECT command, output, timestamp
+            FROM cli_history
+            WHERE device_id = ?
+            ORDER BY timestamp DESC
+            LIMIT 20
+        ''', (device_id,))
+        rows = c.fetchall()
+    except Exception:
+        rows = []
     conn.close()
 
     return [
         {"command": r[0], "output": r[1], "timestamp": r[2]}
-    for r in rows
+        for r in rows
     ]
