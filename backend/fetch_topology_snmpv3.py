@@ -17,14 +17,17 @@ def init_db(db_path="devices.db"):
 
     c.execute('''
     CREATE TABLE IF NOT EXISTS device (
-      device_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT,
-      ip TEXT,
-      vendor TEXT,
-      username TEXT,
-      password TEXT
+    device_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    ip TEXT,
+    vendor TEXT,
+    username TEXT,
+    password TEXT,
+    auth_password TEXT,
+    priv_password TEXT
     )
     ''')
+
     c.execute('''
     CREATE TABLE IF NOT EXISTS link_info (
       link_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,13 +40,13 @@ def init_db(db_path="devices.db"):
     conn.commit()
     conn.close()
 
-def insert_device(name, ip, vendor, username, password, db_path="devices.db"):
+def insert_device(name, ip, vendor, username, password, auth_pw=None, priv_pw=None, db_path="devices.db"):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute("""
-        INSERT INTO device (name, ip, vendor, username, password)
-        VALUES (?, ?, ?, ?, ?)
-    """, (name, ip, vendor, username, password))
+        INSERT INTO device (name, ip, vendor, username, password, auth_password, priv_password)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (name, ip, vendor, username, password, auth_pw, priv_pw))
     device_id = c.lastrowid
     conn.commit()
     conn.close()
@@ -267,7 +270,11 @@ def main():
         vendor = dev.get("vendor", "unknown")
 
         # insert device
-        d_id = insert_device(name, ip, vendor, dev["username"], dev["password"])
+        d_id = insert_device(
+            name, ip, vendor,
+            dev["username"], dev["password"],
+            dev.get("auth_password"), dev.get("priv_password")
+        )
         device_id_map[name] = d_id
 
         # SNMP (옵션)

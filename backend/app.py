@@ -99,13 +99,10 @@ def execute_cli(req: CLIRequest):
 
 @app.get("/api/device/{device_id}")
 def get_device_detail(device_id: int):
-    """
-    장비 정보 + 상태 요약
-    """
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
     c.execute("""
-        SELECT device_id, name, ip, vendor, username, password
+        SELECT device_id, name, ip, vendor, username, password, auth_password, priv_password
         FROM device
         WHERE device_id = ?
     """, (device_id,))
@@ -115,9 +112,8 @@ def get_device_detail(device_id: int):
     if not row:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    dev_id, name, ip, vendor, username, password = row
+    dev_id, name, ip, vendor, username, password, auth_pw, priv_pw = row
 
-    # SNMP는 DB에 SNMP pw 없으므로 재조회X → N/A
     device_info = {
         "id": dev_id,
         "name": name,
@@ -128,15 +124,24 @@ def get_device_detail(device_id: int):
         "uptime": "N/A"
     }
 
-    # invoke_shell()로 Hostname/Model/Version/InterfaceCount
+    # SNMP 정보 반영
+    try:
+        if auth_pw and priv_pw:
+            snmp_info = fetch_snmpv3_info(ip, username, auth_pw, priv_pw)
+            device_info.update(snmp_info)
+    except Exception as e:
+        print(f"[SNMPv3 fetch error] {ip}: {e}")
+
+    # 장비 상세 (hostname, model, version 등)
     dev_details = fetch_topology_snmpv3.fetch_device_info_invoke(ip, username, password)
     device_info.update(dev_details)
 
-    # invoke_shell()로 CPU/메모리/Interfaces
+    # 상태 정보 (CPU, 메모리, 인터페이스 등)
     status_info = fetch_topology_snmpv3.fetch_status_info_invoke(ip, username, password)
     device_info.update(status_info)
 
     return device_info
+
 
 @app.get("/api/device/{device_id}/cli-history")
 def get_cli_history(device_id: int):
