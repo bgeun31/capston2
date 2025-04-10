@@ -4,18 +4,47 @@ devices:
     snmp: true
     cli: true
     vendor: cisco
-    username: song
-    auth_password: bonggeun     # SNMP 인증 암호
-    priv_password: bonggeun     # SNMP 암호화 암호
-    password: "1004"         # ✅ CLI(SSH) 접속용 비밀번호 ← 추가!
+    username: nlabs
+    auth_password: bonggeun
+    priv_password: bonggeun
+    password: "1004"
 
   - name: R2
     ip: 192.168.10.1
     snmp: true
     cli: true
     vendor: cisco
-    username: song
-    auth_password: bonggeun     # SNMP 인증 암호
-    priv_password: bonggeun     # SNMP 암호화 암호
-    password: "1004"       # ✅ CLI(SSH) 접속용 비밀번호 ← 추가!
+    username: nlabs
+    auth_password: bonggeun
+    priv_password: bonggeun
+    password: "1004"
+
+  - name: R3
+    ip: 192.168.20.2
+    snmp: true
+    cli: true
+    vendor: cisco
+    username: nlabs
+    auth_password: bonggeun
+    priv_password: bonggeun
+    password: "1004"
+
+  - name: R4
+    ip: 192.168.20.1
+    snmp: true
+    cli: true
+    vendor: cisco
+    username: nlabs
+    auth_password: bonggeun
+    priv_password: bonggeun
+    password: "1004"
   
+  - name: R5
+    ip: 10.0.0.1
+    snmp: true
+    cli: true
+    vendor: cisco
+    username: nlabs
+    auth_password: bonggeun
+    priv_password: bonggeun
+    password: "1004"
