@@ -19,70 +19,81 @@ function App() {
         drawGraph(nodes, links);
       });
 
-    function drawGraph(nodes, links) {
-      const svg = d3.select(svgRef.current);
-      svg.selectAll("*").remove();
-      const width = 800, height = 600;
-
-      // D3 force 시뮬레이션
-      const sim = d3.forceSimulation(nodes)
-        .force("link", d3.forceLink(links).id(d => d.id).distance(120))
-        .force("charge", d3.forceManyBody().strength(-400))
-        .force("center", d3.forceCenter(width / 2, height / 2));
-
-      // 링크 그리기
-      const link = svg.selectAll(".link")
-        .data(links)
-        .enter()
-        .append("line")
-        .attr("stroke", "#aaa")
-        .attr("stroke-width", 2)
-        .on("mouseover", (e, d) => {
-          setTooltip({
-            visible: true,
-            x: e.pageX,
-            y: e.pageY,
-            text: `Interface: ${d.ifaceA} ↔ ${d.ifaceB}`
-          });
-        })
-        .on("mouseout", () => setTooltip({ visible: false, x: 0, y: 0, text: "" }));
-
-      // 노드(장비) 그리기
-      const node = svg.selectAll(".node")
-        .data(nodes)
-        .enter()
-        .append("circle")
-        .attr("r", 20)
-        .attr("fill", "#69b3a2")
-        .on("click", (e, d) => fetchDeviceDetail(d.id));  // 클릭 시 장비 상세 요청
-
-      // 노드 라벨
-      const label = svg.selectAll(".label")
-        .data(nodes)
-        .enter()
-        .append("text")
-        .text(d => d.name)
-        .attr("text-anchor", "middle")
-        .attr("dy", -30)
-        .style("font-size", "14px");
-
-      // 매 프레임마다 위치 업데이트
-      sim.on("tick", () => {
-        link
-          .attr("x1", d => d.source.x)
-          .attr("y1", d => d.source.y)
-          .attr("x2", d => d.target.x)
-          .attr("y2", d => d.target.y);
-
-        node
-          .attr("cx", d => d.x)
-          .attr("cy", d => d.y);
-
-        label
-          .attr("x", d => d.x)
-          .attr("y", d => d.y);
-      });
-    }
+      function drawGraph(nodes, links) {
+        const svg = d3.select(svgRef.current);
+        svg.selectAll("*").remove();
+        const width = 800, height = 600;
+      
+        // 전체 그래프를 담을 그룹 생성
+        const container = svg.append("g");
+      
+        // 줌 핸들러 설정
+        svg.call(
+          d3.zoom().on("zoom", (event) => {
+            container.attr("transform", event.transform);
+          })
+        );
+      
+        // D3 force 시뮬레이션
+        const sim = d3.forceSimulation(nodes)
+          .force("link", d3.forceLink(links).id(d => d.id).distance(120))
+          .force("charge", d3.forceManyBody().strength(-400))
+          .force("center", d3.forceCenter(width / 2, height / 2));
+      
+        // 링크 그리기
+        const link = container.selectAll(".link")
+          .data(links)
+          .enter()
+          .append("line")
+          .attr("stroke", "#aaa")
+          .attr("stroke-width", 2)
+          .on("mouseover", (e, d) => {
+            setTooltip({
+              visible: true,
+              x: e.pageX,
+              y: e.pageY,
+              text: `Interface: ${d.ifaceA} ↔ ${d.ifaceB}`
+            });
+          })
+          .on("mouseout", () => setTooltip({ visible: false, x: 0, y: 0, text: "" }));
+      
+        // 노드(장비) 그리기
+        const node = container.selectAll(".node")
+          .data(nodes)
+          .enter()
+          .append("circle")
+          .attr("r", 20)
+          .attr("fill", "#69b3a2")
+          .on("click", (e, d) => fetchDeviceDetail(d.id));
+      
+        // 라벨 그리기
+        const label = container.selectAll(".label")
+          .data(nodes)
+          .enter()
+          .append("text")
+          .text(d => d.name)
+          .attr("text-anchor", "middle")
+          .attr("dy", -30)
+          .style("font-size", "14px");
+      
+        // 위치 업데이트
+        sim.on("tick", () => {
+          link
+            .attr("x1", d => d.source.x)
+            .attr("y1", d => d.source.y)
+            .attr("x2", d => d.target.x)
+            .attr("y2", d => d.target.y);
+      
+          node
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y);
+      
+          label
+            .attr("x", d => d.x)
+            .attr("y", d => d.y);
+        });
+      }
+      
   }, []);
 
   // 2) 특정 장비 클릭 시 상세정보 가져옴
