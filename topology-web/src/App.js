@@ -10,6 +10,7 @@ function App() {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, text: "" });
   const [activeTab, setActiveTab] = useState("info");
+  const [deviceCache, setDeviceCache] = useState({});
 
   useEffect(() => {
     axios.get("http://localhost:8000/api/topology").then(res => {
@@ -87,10 +88,20 @@ function App() {
   }, []);
 
   const fetchDeviceDetail = async (id) => {
+    if (deviceCache[id]) {
+      setSelectedDevice(deviceCache[id]);
+      setActiveTab("info");
+      return;
+    }
+  
     const res = await axios.get(`http://localhost:8000/api/device/${id}`);
-    setSelectedDevice(res.data);
+    const data = res.data;
+    setDeviceCache(prev => ({ ...prev, [id]: data }));
+    setSelectedDevice(data);
     setActiveTab("info");
   };
+  
+  
 
   const getPercentageFromCPU = (text) => {
     if (!text || typeof text !== "string") return 0;
