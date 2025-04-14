@@ -23,16 +23,15 @@ export default function TopologyPage() {
   const fetchDeviceDetail = async (id) => {
     setLoading(true);
     try {
-      // 이름 먼저 보여주기 위해 topology에서 name 검색
       const allNodes = await axios.get("/api/topology");
       const clickedNode = allNodes.data.nodes.find(n => n.id === id);
       const name = clickedNode?.name || `ID ${id}`;
       setPendingDeviceName(name);
-  
+
       const res = await axios.get(`/api/device/${id}`);
       setDeviceCache(prev => ({ ...prev, [id]: res.data }));
       setSelectedDevice(res.data);
-  
+
       const hist = await axios.get(`/api/device/${id}/cli-history`);
       setCliHistory(hist.data);
     } catch (err) {
@@ -120,7 +119,7 @@ export default function TopologyPage() {
     <MainLayout>
       <div className="flex gap-6 h-[600px]">
         <svg ref={svgRef} width={800} height={600} className="border rounded" />
-  
+
         <div className="w-[480px] h-full">
           {loading ? (
             <Card className="p-6 h-full flex flex-col items-center justify-center text-center text-gray-600 space-y-4">
@@ -139,7 +138,7 @@ export default function TopologyPage() {
                 <Tab label="장비정보" value="info" />
                 <Tab label="CLI 터미널" value="cli" />
               </Tabs>
-  
+
               {activeTab === "info" && (
                 <div className="text-sm mt-4 space-y-4">
                   <div className="flex justify-center gap-8">
@@ -148,34 +147,23 @@ export default function TopologyPage() {
                         <CircularProgressbar
                           value={parsePercent(selectedDevice.cpuUsage)}
                           text={selectedDevice.cpuUsage}
-                          styles={buildStyles({
-                            textSize: "24px",
-                            pathColor: "#3b82f6",
-                            textColor: "#1f2937",
-                            trailColor: "#d1d5db"
-                          })}
+                          styles={buildStyles({ textSize: "24px", pathColor: "#3b82f6", textColor: "#1f2937", trailColor: "#d1d5db" })}
                         />
                       </div>
                       <p className="mt-1 font-medium text-sm text-gray-700">CPU</p>
                     </div>
-  
                     <div className="flex flex-col items-center">
                       <div className="w-20 h-20">
                         <CircularProgressbar
                           value={parsePercent(selectedDevice.memoryUsage)}
                           text={selectedDevice.memoryUsage}
-                          styles={buildStyles({
-                            textSize: "24px",
-                            pathColor: "#8b5cf6",
-                            textColor: "#1f2937",
-                            trailColor: "#d1d5db"
-                          })}
+                          styles={buildStyles({ textSize: "24px", pathColor: "#8b5cf6", textColor: "#1f2937", trailColor: "#d1d5db" })}
                         />
                       </div>
                       <p className="mt-1 font-medium text-sm text-gray-700">Memory</p>
                     </div>
                   </div>
-  
+
                   <div className="space-y-1 mt-4">
                     <p><b>IP:</b> {selectedDevice.ip}</p>
                     <p><b>Hostname:</b> {selectedDevice.hostname}</p>
@@ -183,9 +171,36 @@ export default function TopologyPage() {
                     <p><b>Version:</b> {selectedDevice.version}</p>
                     <p><b>Interfaces:</b> {selectedDevice.interfaceCount}</p>
                   </div>
+
+                  {/* 인터페이스 상태 표 */}
+                  {selectedDevice.interfaces && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-semibold mb-2 text-gray-700">인터페이스 상태</h4>
+                      <table className="w-full text-sm border text-left">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="py-2 px-3 border-b">Interface</th>
+                            <th className="py-2 px-3 border-b">IP</th>
+                            <th className="py-2 px-3 border-b">Status</th>
+                            <th className="py-2 px-3 border-b">Protocol</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedDevice.interfaces.map((intf, idx) => (
+                            <tr key={idx} className="border-t">
+                              <td className="py-1 px-3">{intf.name}</td>
+                              <td className="py-1 px-3">{intf.ip}</td>
+                              <td className={`py-1 px-3 ${intf.status === 'up' ? 'text-green-600' : 'text-red-500'}`}>{intf.status}</td>
+                              <td className={`py-1 px-3 ${intf.protocol === 'up' ? 'text-green-600' : 'text-red-500'}`}>{intf.protocol}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
-  
+
               {activeTab === "cli" && (
                 <div className="mt-4 space-y-4">
                   <div className="flex gap-2">
@@ -203,11 +218,9 @@ export default function TopologyPage() {
                       실행
                     </button>
                   </div>
-  
                   <div className="bg-black text-green-300 font-mono text-sm p-3 rounded h-40 overflow-auto">
                     {cliOutput || "명령어를 입력 후 실행 결과가 여기에 표시됩니다."}
                   </div>
-  
                   <div className="text-xs text-gray-500 font-medium mt-6">최근 실행 기록</div>
                   <ul className="text-sm list-disc pl-4 space-y-1">
                     {cliHistory.map((item, idx) => (
