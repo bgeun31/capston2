@@ -37,4 +37,7 @@ yarn-error.*
 
 app-example
 
-devices.db
+*.log
+*.sqlite3
+*.db
+*.pyc
