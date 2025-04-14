@@ -40,6 +40,4 @@ app-example
 *.log
 *.sqlite3
 *.db
-
-backend/devices.db
-backend/_pycache_/
+*.pyc
