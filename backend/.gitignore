@@ -37,4 +37,9 @@ yarn-error.*
 
 app-example
 
-devices.db
+*.log
+*.sqlite3
+*.db
+
+backend/devices.db
+backend/_pycache_/
