@@ -34,37 +34,6 @@
  이유: ssh version 2 쓰려면 812이상의 모듈을 사용해야함.
  
 
-# 현재 설정(2025-04-06)
- - Router(config)# ```snmp-server community capston RO```
-
- - Router(config)# ```access-list 10 permit 172.16.0.3```
-
- - Router(config)# ```snmp-server community capston RO 10```
-
- - Router(config)# ```snmp-server group nlab v3 auth```
-
- - Router(config)# ```snmp-server user song nlab v3 auth sha bonggeun priv aes 128 bonggeun```
-
-
- - Router(config)# ```hostname <장비 이름>```
-
- - Router(config)# ```ip domain-name example.com```
-
- - Router(config)# ```crypto key generate rsa```
-
- - Router(config)# ```ip ssh version 2```
-
- - Router(config)# ```line vty 0 4```
-
- - Router(config-line)# ```transport input ssh```
-
- - Router(config-line)# ```login local```
-
- - Router(config-line)# ```exit```
-
- - Router(config)# ```username song privilege 15 secret 1004```
-
-
 # 백엔드, 프론트엔드 실행 명령어
  - 백엔드(폴더명: backend 확인):
 ```sh
