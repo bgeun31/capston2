@@ -1,9 +1,12 @@
+// App.js
 import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import axios from "axios";
 import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
 import "react-circular-progressbar/dist/styles.css";
 import { Tabs, Tab } from "@mui/material";
+import SshTerminal from "./components/SshTerminal";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 function App() {
   const svgRef = useRef(null);
@@ -11,6 +14,9 @@ function App() {
   const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, text: "" });
   const [activeTab, setActiveTab] = useState("info");
   const [deviceCache, setDeviceCache] = useState({});
+  const [cliCommand, setCliCommand] = useState("");
+  const [cliOutput, setCliOutput] = useState("");
+  const [cliHistory, setCliHistory] = useState([]);
 
   useEffect(() => {
     axios.get("http://localhost:8000/api/topology").then(res => {
@@ -47,7 +53,7 @@ function App() {
             visible: true,
             x: e.pageX,
             y: e.pageY,
-            text: `Interface: ${d.ifaceA} ↔ ${d.ifaceB}`
+            text: `Interface: ${d.ifaceA} <-> ${d.ifaceB}`
           });
         })
         .on("mouseout", () => setTooltip({ visible: false, x: 0, y: 0, text: "" }));
@@ -93,21 +99,39 @@ function App() {
       setActiveTab("info");
       return;
     }
-  
+
     const res = await axios.get(`http://localhost:8000/api/device/${id}`);
     const data = res.data;
     setDeviceCache(prev => ({ ...prev, [id]: data }));
     setSelectedDevice(data);
     setActiveTab("info");
   };
-  
-  
+
+  useEffect(() => {
+    if (activeTab === "cli" && selectedDevice) {
+      axios.get(`http://localhost:8000/api/device/${selectedDevice.id}/cli-history`)
+        .then(res => setCliHistory(res.data));
+    }
+  }, [activeTab, selectedDevice]);
+
+  const handleCliExecute = async () => {
+    if (!cliCommand.trim()) return;
+    try {
+      const res = await axios.post("http://localhost:8000/api/device/cli", {
+        device_id: selectedDevice.id,
+        command: cliCommand
+      });
+      setCliOutput(res.data.output);
+    } catch (err) {
+      setCliOutput("명령 실행 중 오류 발생: " + err.message);
+    }
+  };
 
   const getPercentageFromCPU = (text) => {
     if (!text || typeof text !== "string") return 0;
-    const match = text.match(/(\d+)%/);
+    const match = text.match(/(\d+)%/);  // ✅ 수정된 정규식
     return match ? parseInt(match[1]) : 0;
-  };
+  };  
 
   const formatUptime = (secondsStr) => {
     const seconds = parseInt(secondsStr);
@@ -159,6 +183,7 @@ function App() {
             >
               <Tab label="장비정보" value="info" />
               <Tab label="상태요약" value="status" />
+              <Tab label="CLI" value="cli" />
             </Tabs>
 
             {activeTab === "info" && (
@@ -166,17 +191,13 @@ function App() {
                 <p><strong>ID:</strong> {selectedDevice.id}</p>
                 <p><strong>IP:</strong> {selectedDevice.ip}</p>
                 <p><strong>Vendor:</strong> {selectedDevice.vendor || "N/A"}</p>
-
                 <p><strong>sysName:</strong> {selectedDevice.sysName || "N/A"}</p>
-
                 <p><strong>sysDescr:</strong><br />
                   <span style={{ whiteSpace: "pre-wrap" }}>
                     {selectedDevice.sysDescr || "N/A"}
                   </span>
                 </p>
-
                 <p><strong>Uptime:</strong> {formatUptime(selectedDevice.uptime)}</p>
-
                 <p><strong>Hostname:</strong> {selectedDevice.hostname || "N/A"}</p>
                 <p><strong>Model:</strong> {selectedDevice.model || "N/A"}</p>
                 <p><strong>Version:</strong> {selectedDevice.version || "N/A"}</p>
@@ -218,26 +239,26 @@ function App() {
                       <tr key={i}>
                         <td>{iface.name}</td>
                         <td>{iface.ip}</td>
-                        <td>
-                          <span style={{
-                            color: iface.status === "up" ? "green" : "red",
-                            fontWeight: "bold"
-                          }}>
-                            {iface.status}
-                          </span>
+                        <td style={{ color: iface.status === "up" ? "green" : "red", fontWeight: "bold" }}>
+                          {iface.status}
                         </td>
-                        <td>
-                          <span style={{
-                            color: iface.protocol === "up" ? "green" : "red",
-                            fontWeight: "bold"
-                          }}>
-                            {iface.protocol}
-                          </span>
+                        <td style={{ color: iface.protocol === "up" ? "green" : "red", fontWeight: "bold" }}>
+                          {iface.protocol}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* CLI 탭에만 터미널 (ErrorBoundary로 감싸기) */}
+            {activeTab === "cli" && selectedDevice && (
+              <div style={{ padding: "10px" }}>
+                <h4>실시간 터미널 접속</h4>
+                <ErrorBoundary>
+                  <SshTerminal key={selectedDevice.id} deviceId={selectedDevice.id} />
+                </ErrorBoundary>
               </div>
             )}
           </>

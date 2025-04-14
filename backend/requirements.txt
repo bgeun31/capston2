@@ -5,3 +5,5 @@ requests
 fastapi
 uvicorn
 paramiko
+websockets
+"uvicorn[standard]"
