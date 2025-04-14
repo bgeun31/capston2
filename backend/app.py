@@ -184,12 +184,12 @@ async def ssh_terminal_ws(websocket: WebSocket, device_id: int):
 @app.get("/api/performance")
 def get_performance():
     return [
-        {"time": "00:00", "traffic": 120},
-        {"time": "04:00", "traffic": 180},
-        {"time": "08:00", "traffic": 250},
-        {"time": "12:00", "traffic": 400},
-        {"time": "16:00", "traffic": 350},
-        {"time": "20:00", "traffic": 200}
+        { "time": "00:00", "traffic": 120, "cpu": 35, "memory": 60 },
+        { "time": "04:00", "traffic": 180, "cpu": 40, "memory": 65 },
+        { "time": "08:00", "traffic": 250, "cpu": 55, "memory": 72 },
+        { "time": "12:00", "traffic": 400, "cpu": 62, "memory": 74 },
+        { "time": "16:00", "traffic": 350, "cpu": 50, "memory": 70 },
+        { "time": "20:00", "traffic": 200, "cpu": 38, "memory": 58 }
     ]
 
 @app.get("/api/alerts")
@@ -236,3 +236,36 @@ def get_events():
             "timestamp": "2시간 전"
         }
     ]
+
+@app.get("/api/performance-summary")
+def get_performance_summary():
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+    c.execute("SELECT json FROM device_cache")
+    rows = c.fetchall()
+    conn.close()
+
+    cpu_total, mem_total, if_total, device_total = 0, 0, 0, 0
+
+    for r in rows:
+        try:
+            data = json.loads(r[0])
+            cpu = int(data.get("cpuUsage", "0%").replace("%", ""))
+            mem = int(data.get("memoryUsage", "0%").replace("%", ""))
+            interfaces = int(data.get("interfaceCount", 0))
+            cpu_total += cpu
+            mem_total += mem
+            if_total += interfaces
+            device_total += 1
+        except:
+            continue
+
+    avg_cpu = round(cpu_total / device_total, 1) if device_total else 0
+    avg_mem = round(mem_total / device_total, 1) if device_total else 0
+
+    return {
+        "avg_cpu": f"{avg_cpu}%",
+        "avg_memory": f"{avg_mem}%",
+        "total_interfaces": if_total,
+        "devices": device_total
+    }
