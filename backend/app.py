@@ -180,3 +180,92 @@ async def ssh_terminal_ws(websocket: WebSocket, device_id: int):
         await terminal.websocket_handler(websocket)
     except WebSocketDisconnect:
         print(f"[DISCONNECTED] Device {device_id}")
+
+@app.get("/api/performance")
+def get_performance():
+    return [
+        { "time": "00:00", "traffic": 120, "cpu": 35, "memory": 60 },
+        { "time": "04:00", "traffic": 180, "cpu": 40, "memory": 65 },
+        { "time": "08:00", "traffic": 250, "cpu": 55, "memory": 72 },
+        { "time": "12:00", "traffic": 400, "cpu": 62, "memory": 74 },
+        { "time": "16:00", "traffic": 350, "cpu": 50, "memory": 70 },
+        { "time": "20:00", "traffic": 200, "cpu": 38, "memory": 58 }
+    ]
+
+@app.get("/api/alerts")
+def get_alerts():
+    return [
+        {
+            "message": "의심스러운 로그인 시도",
+            "level": "높음",
+            "detail": "203.0.113.42에서 관리자 계정으로 여러 번 로그인 시도"
+        },
+        {
+            "message": "비정상적인 트래픽 패턴",
+            "level": "중간",
+            "detail": "Core Router에서 DDoS 의심 트래픽 감지"
+        },
+        {
+            "message": "포트 스캔 감지",
+            "level": "낮음",
+            "detail": "198.51.100.75에서 포트 스캔 시도 감지"
+        }
+    ]
+
+@app.get("/api/events")
+def get_events():
+    return [
+        {
+            "title": "Core Router 재부팅 완료",
+            "description": "펌웨어 업데이트 후 성공적으로 재부팅됨",
+            "timestamp": "15분 전"
+        },
+        {
+            "title": "Access Switch 2 포트 다운",
+            "description": "GigabitEthernet1/0/12 포트가 다운됨",
+            "timestamp": "32분 전"
+        },
+        {
+            "title": "구성 변경 감지됨",
+            "description": "방화벽에서 새로운 ACL 규칙이 추가됨",
+            "timestamp": "1시간 전"
+        },
+        {
+            "title": "새 장치 감지됨",
+            "description": "새 IP 장치가 네트워크에 연결되었습니다.",
+            "timestamp": "2시간 전"
+        }
+    ]
+
+@app.get("/api/performance-summary")
+def get_performance_summary():
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+    c.execute("SELECT json FROM device_cache")
+    rows = c.fetchall()
+    conn.close()
+
+    cpu_total, mem_total, if_total, device_total = 0, 0, 0, 0
+
+    for r in rows:
+        try:
+            data = json.loads(r[0])
+            cpu = int(data.get("cpuUsage", "0%").replace("%", ""))
+            mem = int(data.get("memoryUsage", "0%").replace("%", ""))
+            interfaces = int(data.get("interfaceCount", 0))
+            cpu_total += cpu
+            mem_total += mem
+            if_total += interfaces
+            device_total += 1
+        except:
+            continue
+
+    avg_cpu = round(cpu_total / device_total, 1) if device_total else 0
+    avg_mem = round(mem_total / device_total, 1) if device_total else 0
+
+    return {
+        "avg_cpu": f"{avg_cpu}%",
+        "avg_memory": f"{avg_mem}%",
+        "total_interfaces": if_total,
+        "devices": device_total
+    }
