@@ -1,5 +1,3 @@
-# fetch_topology_snmpv3.py (전체 통합 수정본)
-
 import yaml
 import paramiko
 import re
@@ -16,6 +14,12 @@ def init_db(db_path="devices.db"):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
 
+    # 모든 테이블 삭제
+    c.execute("DROP TABLE IF EXISTS device")
+    c.execute("DROP TABLE IF EXISTS link_info")
+    c.execute("DROP TABLE IF EXISTS device_cache")
+
+    # 테이블 재생성 (AUTOINCREMENT 초기화됨)
     c.execute('''
     CREATE TABLE IF NOT EXISTS device (
       device_id INTEGER PRIMARY KEY AUTOINCREMENT,
