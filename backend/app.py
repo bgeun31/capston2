@@ -180,3 +180,59 @@ async def ssh_terminal_ws(websocket: WebSocket, device_id: int):
         await terminal.websocket_handler(websocket)
     except WebSocketDisconnect:
         print(f"[DISCONNECTED] Device {device_id}")
+
+@app.get("/api/performance")
+def get_performance():
+    return [
+        {"time": "00:00", "traffic": 120},
+        {"time": "04:00", "traffic": 180},
+        {"time": "08:00", "traffic": 250},
+        {"time": "12:00", "traffic": 400},
+        {"time": "16:00", "traffic": 350},
+        {"time": "20:00", "traffic": 200}
+    ]
+
+@app.get("/api/alerts")
+def get_alerts():
+    return [
+        {
+            "message": "의심스러운 로그인 시도",
+            "level": "높음",
+            "detail": "203.0.113.42에서 관리자 계정으로 여러 번 로그인 시도"
+        },
+        {
+            "message": "비정상적인 트래픽 패턴",
+            "level": "중간",
+            "detail": "Core Router에서 DDoS 의심 트래픽 감지"
+        },
+        {
+            "message": "포트 스캔 감지",
+            "level": "낮음",
+            "detail": "198.51.100.75에서 포트 스캔 시도 감지"
+        }
+    ]
+
+@app.get("/api/events")
+def get_events():
+    return [
+        {
+            "title": "Core Router 재부팅 완료",
+            "description": "펌웨어 업데이트 후 성공적으로 재부팅됨",
+            "timestamp": "15분 전"
+        },
+        {
+            "title": "Access Switch 2 포트 다운",
+            "description": "GigabitEthernet1/0/12 포트가 다운됨",
+            "timestamp": "32분 전"
+        },
+        {
+            "title": "구성 변경 감지됨",
+            "description": "방화벽에서 새로운 ACL 규칙이 추가됨",
+            "timestamp": "1시간 전"
+        },
+        {
+            "title": "새 장치 감지됨",
+            "description": "새 IP 장치가 네트워크에 연결되었습니다.",
+            "timestamp": "2시간 전"
+        }
+    ]
