@@ -42,7 +42,7 @@
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
 ```
 
- - 프론트엔드(폴더명: topology-web 확인):
+ - 프론트엔드(폴더명: frontend 확인):
 ```sh
 npm start
 ```
