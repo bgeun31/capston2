@@ -6,6 +6,8 @@ import { Tabs, Tab } from "@mui/material";
 import SshTerminal from "../components/SshTerminal";
 import { Card } from "../components/ui/card";
 import MainLayout from "../components/layout/MainLayout";
+import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
+import "react-circular-progressbar/dist/styles.css";
 
 export default function TopologyPage() {
   const svgRef = useRef(null);
@@ -97,6 +99,11 @@ export default function TopologyPage() {
     }
   }, []);
 
+  const parsePercent = (val) => {
+    if (!val || typeof val !== "string") return 0;
+    return parseInt(val.replace("%", "")) || 0;
+  };
+
   return (
     <MainLayout>
       <div className="flex gap-6">
@@ -111,14 +118,53 @@ export default function TopologyPage() {
               </Tabs>
 
               {activeTab === "info" && (
-                <div className="text-sm mt-4 space-y-1">
-                  <p><b>IP:</b> {selectedDevice.ip}</p>
-                  <p><b>Hostname:</b> {selectedDevice.hostname}</p>
-                  <p><b>Model:</b> {selectedDevice.model}</p>
-                  <p><b>Version:</b> {selectedDevice.version}</p>
-                  <p><b>Interfaces:</b> {selectedDevice.interfaceCount}</p>
-                  <p><b>CPU:</b> {selectedDevice.cpuUsage}</p>
-                  <p><b>Memory:</b> {selectedDevice.memoryUsage}</p>
+                <div className="text-sm mt-4 space-y-4">
+
+                  {/* 원형 게이지 상단 배치 */}
+                  <div className="flex justify-center gap-8">
+                    {/* CPU */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-20 h-20">
+                        <CircularProgressbar
+                          value={parsePercent(selectedDevice.cpuUsage)}
+                          text={selectedDevice.cpuUsage}
+                          styles={buildStyles({
+                            textSize: "24px",
+                            pathColor: "#3b82f6",
+                            textColor: "#1f2937",
+                            trailColor: "#d1d5db"
+                          })}
+                        />
+                      </div>
+                      <p className="mt-1 font-medium text-sm text-gray-700">CPU</p>
+                    </div>
+
+                    {/* Memory */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-20 h-20">
+                        <CircularProgressbar
+                          value={parsePercent(selectedDevice.memoryUsage)}
+                          text={selectedDevice.memoryUsage}
+                          styles={buildStyles({
+                            textSize: "24px",
+                            pathColor: "#8b5cf6",
+                            textColor: "#1f2937",
+                            trailColor: "#d1d5db"
+                          })}
+                        />
+                      </div>
+                      <p className="mt-1 font-medium text-sm text-gray-700">Memory</p>
+                    </div>
+                  </div>
+
+                  {/* 텍스트 정보는 아래로 */}
+                  <div className="space-y-1 mt-4">
+                    <p><b>IP:</b> {selectedDevice.ip}</p>
+                    <p><b>Hostname:</b> {selectedDevice.hostname}</p>
+                    <p><b>Model:</b> {selectedDevice.model}</p>
+                    <p><b>Version:</b> {selectedDevice.version}</p>
+                    <p><b>Interfaces:</b> {selectedDevice.interfaceCount}</p>
+                  </div>
                 </div>
               )}
 
