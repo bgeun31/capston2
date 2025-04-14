@@ -165,6 +165,19 @@ def fill_missing_device_cache(db_path="devices.db"):
             except Exception as e:
                 print(f"[cache:fill] {name} 실패: {e}")
 
+def extract_cpu_percentage(output: str):
+    match = re.search(r"CPU utilization.*?(\d+)%", output)
+    return match.group(1) + "%" if match else "N/A"
+
+def extract_memory_percentage(output: str):
+    match = re.search(r"Total:\s+(\d+)\s+Used:\s+(\d+)", output)
+    if match:
+        total = int(match.group(1))
+        used = int(match.group(2))
+        if total > 0:
+            percent = (used / total) * 100
+            return f"{int(percent)}%"
+    return "N/A"
 
 def fetch_status_info_invoke(ip, username, password):
     try:
@@ -185,9 +198,14 @@ def fetch_status_info_invoke(ip, username, password):
         time.sleep(1)
         out3 = channel.recv(65535).decode('utf-8', 'ignore')
         ssh.close()
+
+        # CPU 및 메모리 사용률 퍼센트로 파싱
+        cpu_usage = extract_cpu_percentage(out1)
+        memory_usage = extract_memory_percentage(out2)
+
         return {
-            "cpuUsage": out1.strip(),
-            "memoryUsage": out2.strip(),
+            "cpuUsage": cpu_usage,
+            "memoryUsage": memory_usage,
             "interfaces": parse_interface_status(out3)
         }
     except Exception as e:

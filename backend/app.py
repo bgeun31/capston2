@@ -4,6 +4,8 @@ import sqlite3
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi import WebSocket, WebSocketDisconnect
+from ssh_terminal import SSHTerminal
 import paramiko
 import fetch_topology_snmpv3
 import json
@@ -155,3 +157,26 @@ def get_cli_history(device_id: int):
         {"command": r[0], "output": r[1], "timestamp": r[2]}
         for r in rows
     ]
+
+@app.websocket("/ws/terminal/{device_id}")
+async def ssh_terminal_ws(websocket: WebSocket, device_id: int):
+    # DB에서 IP, 계정, 비밀번호 조회
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+    c.execute("SELECT ip, username, password FROM device WHERE device_id = ?", (device_id,))
+    row = c.fetchone()
+    conn.close()
+
+    if not row:
+        await websocket.accept()
+        await websocket.send_text("[ERROR] 장비 정보를 찾을 수 없습니다.")
+        await websocket.close()
+        return
+
+    ip, username, password = row
+    terminal = SSHTerminal(ip, username, password)
+
+    try:
+        await terminal.websocket_handler(websocket)
+    except WebSocketDisconnect:
+        print(f"[DISCONNECTED] Device {device_id}")

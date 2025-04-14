@@ -1,10 +1,12 @@
-// ... (상단 import 동일)
+// App.js
 import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import axios from "axios";
 import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
 import "react-circular-progressbar/dist/styles.css";
 import { Tabs, Tab } from "@mui/material";
+import SshTerminal from "./components/SshTerminal";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 function App() {
   const svgRef = useRef(null);
@@ -127,9 +129,9 @@ function App() {
 
   const getPercentageFromCPU = (text) => {
     if (!text || typeof text !== "string") return 0;
-    const match = text.match(/(\\d+)%/);
+    const match = text.match(/(\d+)%/);  // ✅ 수정된 정규식
     return match ? parseInt(match[1]) : 0;
-  };
+  };  
 
   const formatUptime = (secondsStr) => {
     const seconds = parseInt(secondsStr);
@@ -250,30 +252,13 @@ function App() {
               </div>
             )}
 
-            {activeTab === "cli" && (
+            {/* CLI 탭에만 터미널 (ErrorBoundary로 감싸기) */}
+            {activeTab === "cli" && selectedDevice && (
               <div style={{ padding: "10px" }}>
-                <h4>CLI 명령어 실행</h4>
-                <input
-                  type="text"
-                  value={cliCommand}
-                  onChange={(e) => setCliCommand(e.target.value)}
-                  placeholder="예: show ip interface brief"
-                  style={{ width: "100%", padding: "8px", marginBottom: "10px" }}
-                />
-                <button onClick={handleCliExecute} style={{ padding: "8px 16px" }}>
-                  실행
-                </button>
-                {cliOutput && (
-                  <pre style={{ whiteSpace: "pre-wrap", marginTop: "10px", backgroundColor: "#f4f4f4", padding: "10px" }}>
-                    {cliOutput}
-                  </pre>
-                )}
-                <h5 style={{ marginTop: "20px" }}>최근 명령어 기록</h5>
-                <ul>
-                  {cliHistory.map((entry, i) => (
-                    <li key={i}><strong>{entry.timestamp}:</strong> {entry.command}</li>
-                  ))}
-                </ul>
+                <h4>실시간 터미널 접속</h4>
+                <ErrorBoundary>
+                  <SshTerminal key={selectedDevice.id} deviceId={selectedDevice.id} />
+                </ErrorBoundary>
               </div>
             )}
           </>
