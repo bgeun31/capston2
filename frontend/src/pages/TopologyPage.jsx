@@ -17,18 +17,30 @@ export default function TopologyPage() {
   const [cliCommand, setCliCommand] = useState("");
   const [cliOutput, setCliOutput] = useState("");
   const [cliHistory, setCliHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [pendingDeviceName, setPendingDeviceName] = useState("");
 
   const fetchDeviceDetail = async (id) => {
-    if (deviceCache[id]) {
-      setSelectedDevice(deviceCache[id]);
-    } else {
+    setLoading(true);
+    try {
+      // 이름 먼저 보여주기 위해 topology에서 name 검색
+      const allNodes = await axios.get("/api/topology");
+      const clickedNode = allNodes.data.nodes.find(n => n.id === id);
+      const name = clickedNode?.name || `ID ${id}`;
+      setPendingDeviceName(name);
+  
       const res = await axios.get(`/api/device/${id}`);
       setDeviceCache(prev => ({ ...prev, [id]: res.data }));
       setSelectedDevice(res.data);
+  
+      const hist = await axios.get(`/api/device/${id}/cli-history`);
+      setCliHistory(hist.data);
+    } catch (err) {
+      console.error("장비 정보를 불러오지 못했습니다:", err);
+    } finally {
+      setLoading(false);
     }
-    const hist = await axios.get(`/api/device/${id}/cli-history`);
-    setCliHistory(hist.data);
-  };
+  };  
 
   const handleCliExecute = async () => {
     if (!cliCommand.trim()) return;
@@ -106,23 +118,31 @@ export default function TopologyPage() {
 
   return (
     <MainLayout>
-      <div className="flex gap-6">
+      <div className="flex gap-6 h-[600px]">
         <svg ref={svgRef} width={800} height={600} className="border rounded" />
-
-        <div className="w-[480px]">
-          {selectedDevice ? (
-            <Card className="p-4">
+  
+        <div className="w-[480px] h-full">
+          {loading ? (
+            <Card className="p-6 h-full flex flex-col items-center justify-center text-center text-gray-600 space-y-4">
+              <div className="flex items-center gap-2 animate-pulse">
+                <svg className="animate-spin h-6 w-6 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+                <span className="text-base font-medium">{pendingDeviceName} 장비 정보를 불러오는 중...</span>
+              </div>
+              <div className="text-sm text-gray-400">SSH 및 SNMP 실시간 수집 중입니다</div>
+            </Card>
+          ) : selectedDevice ? (
+            <Card className="p-4 h-full overflow-y-auto">
               <Tabs value={activeTab} onChange={(e, val) => setActiveTab(val)}>
                 <Tab label="장비정보" value="info" />
                 <Tab label="CLI 터미널" value="cli" />
               </Tabs>
-
+  
               {activeTab === "info" && (
                 <div className="text-sm mt-4 space-y-4">
-
-                  {/* 원형 게이지 상단 배치 */}
                   <div className="flex justify-center gap-8">
-                    {/* CPU */}
                     <div className="flex flex-col items-center">
                       <div className="w-20 h-20">
                         <CircularProgressbar
@@ -138,8 +158,7 @@ export default function TopologyPage() {
                       </div>
                       <p className="mt-1 font-medium text-sm text-gray-700">CPU</p>
                     </div>
-
-                    {/* Memory */}
+  
                     <div className="flex flex-col items-center">
                       <div className="w-20 h-20">
                         <CircularProgressbar
@@ -156,8 +175,7 @@ export default function TopologyPage() {
                       <p className="mt-1 font-medium text-sm text-gray-700">Memory</p>
                     </div>
                   </div>
-
-                  {/* 텍스트 정보는 아래로 */}
+  
                   <div className="space-y-1 mt-4">
                     <p><b>IP:</b> {selectedDevice.ip}</p>
                     <p><b>Hostname:</b> {selectedDevice.hostname}</p>
@@ -167,7 +185,7 @@ export default function TopologyPage() {
                   </div>
                 </div>
               )}
-
+  
               {activeTab === "cli" && (
                 <div className="mt-4 space-y-4">
                   <div className="flex gap-2">
@@ -185,11 +203,11 @@ export default function TopologyPage() {
                       실행
                     </button>
                   </div>
-
+  
                   <div className="bg-black text-green-300 font-mono text-sm p-3 rounded h-40 overflow-auto">
                     {cliOutput || "명령어를 입력 후 실행 결과가 여기에 표시됩니다."}
                   </div>
-
+  
                   <div className="text-xs text-gray-500 font-medium mt-6">최근 실행 기록</div>
                   <ul className="text-sm list-disc pl-4 space-y-1">
                     {cliHistory.map((item, idx) => (
@@ -200,10 +218,12 @@ export default function TopologyPage() {
               )}
             </Card>
           ) : (
-            <p>장비를 클릭하면 정보를 확인할 수 있습니다.</p>
+            <div className="h-full flex items-center justify-center text-gray-500">
+              장비를 클릭하면 정보를 확인할 수 있습니다.
+            </div>
           )}
         </div>
       </div>
     </MainLayout>
-  );
+  );  
 }

@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import Depends
 from ssh_terminal import SSHTerminal
 import paramiko
 import fetch_topology_snmpv3
@@ -106,32 +107,53 @@ def get_device_detail(device_id: int):
 
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
-    try:
-        c.execute("SELECT json FROM device_cache WHERE device_id = ?", (device_id,))
-        row = c.fetchone()
-    except Exception:
-        row = None
+    c.execute("""
+        SELECT name, ip, vendor, username, password, auth_password, priv_password
+        FROM device
+        WHERE device_id = ?
+    """, (device_id,))
+    row = c.fetchone()
     conn.close()
 
-    if not row or not row[0]:
-        return {
-            "id": device_id,
-            "name": f"장비 {device_id}",
-            "ip": "0.0.0.0",
-            "vendor": "unknown",
-            "sysName": "N/A",
-            "sysDescr": "N/A",
-            "uptime": "N/A",
-            "hostname": "N/A",
-            "model": "N/A",
-            "version": "N/A",
-            "interfaceCount": 0,
-            "cpuUsage": "N/A",
-            "memoryUsage": "N/A",
-            "interfaces": []
-        }
+    if not row:
+        raise HTTPException(status_code=404, detail="장비 정보를 찾을 수 없습니다.")
 
-    return json.loads(row[0])
+    name, ip, vendor, username, password, auth_pw, priv_pw = row
+
+    device_info = {
+        "id": device_id,
+        "name": name,
+        "ip": ip,
+        "vendor": vendor,
+        "username": username,
+        "sysName": "N/A",
+        "sysDescr": "N/A",
+        "uptime": "N/A",
+        "hostname": "N/A",
+        "model": "N/A",
+        "version": "N/A",
+        "interfaceCount": 0,
+        "cpuUsage": "N/A",
+        "memoryUsage": "N/A",
+        "interfaces": []
+    }
+
+    try:
+        if auth_pw and priv_pw:
+            snmp_info = fetch_topology_snmpv3.fetch_snmpv3_info(ip, username, auth_pw, priv_pw)
+            device_info.update(snmp_info)
+    except Exception as e:
+        print(f"[SNMPv3] 실패: {e}")
+
+    try:
+        info = fetch_topology_snmpv3.fetch_device_info_invoke(ip, username, password)
+        status = fetch_topology_snmpv3.fetch_status_info_invoke(ip, username, password)
+        device_info.update(info)
+        device_info.update(status)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"CLI 정보 수집 실패: {e}")
+
+    return device_info
 
 @app.get("/api/device/{device_id}/cli-history")
 def get_cli_history(device_id: int):
