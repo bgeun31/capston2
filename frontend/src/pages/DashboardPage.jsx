@@ -7,9 +7,7 @@ import {
   Link2,
   ShieldAlert,
   Cpu,
-  MemoryStick,
-  Network as NetworkIcon,
-  Activity
+  MemoryStick
 } from "lucide-react";
 import {
   AreaChart,
@@ -30,9 +28,9 @@ export default function DashboardPage() {
   const [firewallCount, setFirewallCount] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [events, setEvents] = useState([]);
-
-  const [performanceData, setPerformanceData] = useState([]);
-  const [activePerfTab, setActivePerfTab] = useState("traffic");
+  const [deviceList, setDeviceList] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState(null);
+  const [perfData, setPerfData] = useState([]);
 
   useEffect(() => {
     axios.get("/api/topology").then(res => {
@@ -55,8 +53,11 @@ export default function DashboardPage() {
       setFirewallCount(typeMap.firewall);
     });
 
-    axios.get("/api/performance").then(res => {
-      setPerformanceData(res.data);
+    axios.get("/api/devices").then((res) => {
+      setDeviceList(res.data);
+      if (res.data.length > 0) {
+        setSelectedDeviceId(res.data[0].id);
+      }
     });
 
     axios.get("/api/alerts").then(res => {
@@ -68,13 +69,17 @@ export default function DashboardPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (selectedDeviceId) {
+      axios.get(`/api/performance?device_id=${selectedDeviceId}`).then((res) => setPerfData(res.data));
+    }
+  }, [selectedDeviceId]);
+
   const displayOrNA = (val) => val === null || val === undefined ? "N/A" : val;
 
   return (
     <MainLayout>
       <div className="space-y-8">
-
-        {/* 요약 카드 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
           <div className="bg-white shadow-md border rounded-lg p-4 flex items-center gap-4">
             <div className="p-3 bg-gray-100 rounded-full">
@@ -105,7 +110,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 최근 이벤트 */}
         <div className="bg-white rounded-lg border p-4 shadow-sm">
           <h3 className="text-lg font-semibold mb-4">최근 이벤트</h3>
           <ul className="space-y-2">
@@ -118,50 +122,52 @@ export default function DashboardPage() {
           </ul>
         </div>
 
-        {/* 성능 개요 (탭 + 그래프) */}
         <div className="bg-white rounded-lg border p-4 shadow-sm">
-          <h3 className="text-lg font-semibold mb-4">성능 개요</h3>
+          <h3 className="text-lg font-semibold mb-4">장비별 성능 개요</h3>
 
-          {/* 탭 버튼 */}
-          <div className="flex gap-2 mb-4">
-            {["traffic", "cpu", "memory"].map((key) => (
-              <button
-                key={key}
-                onClick={() => setActivePerfTab(key)}
-                className={`px-4 py-1 rounded-full text-sm border ${
-                  activePerfTab === key
-                    ? "bg-blue-500 text-white border-blue-500"
-                    : "bg-white text-gray-600 border-gray-300"
-                }`}
-              >
-                {key === "traffic" ? "트래픽" : key === "cpu" ? "CPU" : "메모리"}
-              </button>
-            ))}
+          {/* 장비 선택 */}
+          <div className="mb-4">
+            <label className="text-sm text-gray-600 mr-2">장비 선택:</label>
+            <select
+              value={selectedDeviceId || ""}
+              onChange={(e) => setSelectedDeviceId(e.target.value)}
+              className="border px-3 py-1 rounded"
+            >
+              {deviceList.map((dev) => (
+                <option key={dev.id} value={dev.id}>{dev.name}</option>
+              ))}
+            </select>
           </div>
 
-          {/* AreaChart */}
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={performanceData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="time" stroke="#888" />
-                <YAxis stroke="#999" />
-                <CartesianGrid strokeDasharray="3 3" />
-                <Tooltip />
-                <Area
-                  type="monotone"
-                  dataKey={activePerfTab}
-                  stroke="#3b82f6"
-                  fillOpacity={1}
-                  fill="url(#colorFill)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          {/* 성능 그래프 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* CPU */}
+            <div className="h-72">
+              <h4 className="text-sm text-gray-600 font-medium mb-2">CPU 사용률 (%)</h4>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={perfData}>
+                  <XAxis dataKey="time" />
+                  <YAxis domain={[0, 100]} />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="cpu" stroke="#3b82f6" fill="#bfdbfe" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Memory */}
+            <div className="h-72">
+              <h4 className="text-sm text-gray-600 font-medium mb-2">Memory 사용률 (%)</h4>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={perfData}>
+                  <XAxis dataKey="time" />
+                  <YAxis domain={[0, 100]} />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="memory" stroke="#8b5cf6" fill="#ddd6fe" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
       </div>
