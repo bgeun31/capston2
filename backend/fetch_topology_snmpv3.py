@@ -47,6 +47,16 @@ def init_db(db_path="devices.db"):
       json TEXT
     )
     ''')
+    
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS device_stats (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id INTEGER,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+      cpu_usage TEXT,
+      mem_usage TEXT
+    )
+    ''')
 
     conn.commit()
     conn.close()

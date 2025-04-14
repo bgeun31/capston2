@@ -6,11 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi import Depends
+from apscheduler.schedulers.background import BackgroundScheduler
 from ssh_terminal import SSHTerminal
 import paramiko
 import fetch_topology_snmpv3
 import json
 import os
+
+scheduler = BackgroundScheduler()
 
 app = FastAPI()
 
@@ -52,6 +55,16 @@ def get_topology():
 class CLIRequest(BaseModel):
     device_id: int
     command: str
+
+@app.get("/api/devices")
+def get_device_list():
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+    c.execute("SELECT device_id, name FROM device")
+    rows = c.fetchall()
+    conn.close()
+
+    return [{"id": r[0], "name": r[1]} for r in rows]
 
 @app.post("/api/device/cli")
 def execute_cli(req: CLIRequest):
@@ -204,14 +217,35 @@ async def ssh_terminal_ws(websocket: WebSocket, device_id: int):
         print(f"[DISCONNECTED] Device {device_id}")
 
 @app.get("/api/performance")
-def get_performance():
+def get_performance(device_id: int = None):
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+
+    query = """
+        SELECT strftime('%H:%M', timestamp),
+               CAST(REPLACE(cpu_usage, '%', '') AS INTEGER),
+               CAST(REPLACE(mem_usage, '%', '') AS INTEGER)
+        FROM device_stats
+    """
+    params = []
+
+    if device_id:
+        query += " WHERE device_id = ?"
+        params.append(device_id)
+
+    query += """
+        GROUP BY strftime('%Y-%m-%d %H:%M', timestamp)
+        ORDER BY timestamp DESC
+        LIMIT 10
+    """
+
+    c.execute(query, params)
+    rows = c.fetchall()
+    conn.close()
+
     return [
-        { "time": "00:00", "traffic": 120, "cpu": 35, "memory": 60 },
-        { "time": "04:00", "traffic": 180, "cpu": 40, "memory": 65 },
-        { "time": "08:00", "traffic": 250, "cpu": 55, "memory": 72 },
-        { "time": "12:00", "traffic": 400, "cpu": 62, "memory": 74 },
-        { "time": "16:00", "traffic": 350, "cpu": 50, "memory": 70 },
-        { "time": "20:00", "traffic": 200, "cpu": 38, "memory": 58 }
+        {"time": r[0], "cpu": r[1], "memory": r[2]}
+        for r in reversed(rows)
     ]
 
 @app.get("/api/alerts")
@@ -291,3 +325,39 @@ def get_performance_summary():
         "total_interfaces": if_total,
         "devices": device_total
     }
+
+def collect_all_stats():
+    print("[STATS] CPU/MEM 정보 수집 시작")
+    conn = sqlite3.connect("devices.db")
+    c = conn.cursor()
+    c.execute("SELECT device_id, ip, username, password FROM device")
+    devices = c.fetchall()
+    conn.close()
+
+    for device_id, ip, username, password in devices:
+        try:
+            stats = fetch_topology_snmpv3.fetch_status_info_invoke(ip, username, password)
+            cpu = stats["cpuUsage"]
+            mem = stats["memoryUsage"]
+
+            conn = sqlite3.connect("devices.db")
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO device_stats (device_id, cpu_usage, mem_usage)
+                VALUES (?, ?, ?)
+            """, (device_id, cpu, mem))
+            conn.commit()
+            conn.close()
+
+            print(f"[STATS] {ip} → CPU={cpu}, MEM={mem}")
+
+        except Exception as e:
+            print(f"[STATS] {ip} 수집 실패: {e}")
+
+# 서버 시작 시 스케줄러도 시작
+@app.on_event("startup")
+def start_background_scheduler():
+    if not scheduler.running:
+        scheduler.add_job(collect_all_stats, 'interval', minutes=1)
+        scheduler.start()
+        print("[SCHEDULER] 성능 정보 수집 스케줄러 시작됨")
