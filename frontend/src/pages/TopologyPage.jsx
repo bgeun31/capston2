@@ -108,6 +108,8 @@ export default function TopologyPage() {
         label.attr("x", d => d.x).attr("y", d => d.y);
       });
     }
+
+    svgRef.current.style.backgroundColor = "#ffffff";
   }, []);
 
   const parsePercent = (val) => {
@@ -133,7 +135,7 @@ export default function TopologyPage() {
               <div className="text-sm text-gray-400">SSH 및 SNMP 실시간 수집 중입니다</div>
             </Card>
           ) : selectedDevice ? (
-            <Card className="p-4 h-full overflow-y-auto">
+            <Card className="p-4 h-full overflow-y-auto bg-white">
               <Tabs value={activeTab} onChange={(e, val) => setActiveTab(val)}>
                 <Tab label="장비정보" value="info" />
                 <Tab label="CLI 터미널" value="cli" />
