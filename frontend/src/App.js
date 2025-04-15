@@ -3,6 +3,7 @@ import { Routes, Route } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
 import TopologyPage from "./pages/TopologyPage";
 import TerminalPage from "./pages/TerminalPage";
+import LogPage from "./pages/LogPage";
 
 export default function App() {
   return (
@@ -10,6 +11,7 @@ export default function App() {
       <Route path="/" element={<DashboardPage />} />
       <Route path="/topology" element={<TopologyPage />} />
       <Route path="/terminal" element={<TerminalPage />} />
+      <Route path="/logs" element={<LogPage />} />
     </Routes>
   );
 }
