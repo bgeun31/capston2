@@ -120,8 +120,10 @@ export default function TopologyPage() {
   return (
     <MainLayout>
       <div className="flex gap-6 h-[600px]">
-        <svg ref={svgRef} width={800} height={600} className="border rounded" />
-
+        <div className="flex flex-col bg-white p-4 rounded shadow-md">
+          <div className="text-xl font-bold mb-2">네트워크 토폴로지</div>
+          <svg ref={svgRef} width={800} height={600} className="border border-gray-300 rounded-lg" />
+        </div>
         <div className="w-[480px] h-full">
           {loading ? (
             <Card className="p-6 h-full flex flex-col items-center justify-center text-center text-gray-600 space-y-4">
