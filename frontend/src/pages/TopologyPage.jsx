@@ -108,6 +108,8 @@ export default function TopologyPage() {
         label.attr("x", d => d.x).attr("y", d => d.y);
       });
     }
+
+    svgRef.current.style.backgroundColor = "#ffffff";
   }, []);
 
   const parsePercent = (val) => {
@@ -118,8 +120,10 @@ export default function TopologyPage() {
   return (
     <MainLayout>
       <div className="flex gap-6 h-[600px]">
-        <svg ref={svgRef} width={800} height={600} className="border rounded" />
-
+        <div className="flex flex-col bg-white p-4 rounded shadow-md">
+          <div className="text-xl font-bold mb-2">네트워크 토폴로지</div>
+          <svg ref={svgRef} width={800} height={600} className="border border-gray-300 rounded-lg" />
+        </div>
         <div className="w-[480px] h-full">
           {loading ? (
             <Card className="p-6 h-full flex flex-col items-center justify-center text-center text-gray-600 space-y-4">
@@ -133,7 +137,7 @@ export default function TopologyPage() {
               <div className="text-sm text-gray-400">SSH 및 SNMP 실시간 수집 중입니다</div>
             </Card>
           ) : selectedDevice ? (
-            <Card className="p-4 h-full overflow-y-auto">
+            <Card className="p-4 h-full overflow-y-auto bg-white">
               <Tabs value={activeTab} onChange={(e, val) => setActiveTab(val)}>
                 <Tab label="장비정보" value="info" />
                 <Tab label="CLI 터미널" value="cli" />
