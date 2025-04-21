@@ -6,3 +6,4 @@ fastapi
 uvicorn
 paramiko
 websockets
+apscheduler
