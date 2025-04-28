@@ -48,3 +48,54 @@ devices:
     auth_password: capstondesign
     priv_password: capstondesign
     password: "1004"
+
+  - name: SW1
+    ip: 192.168.10.3
+    snmp: true
+    cli: true 
+    vendor: cisco
+    username: nlabs
+    auth_password: capstondesign
+    priv_password: capstondesign
+    password: "1004"
+
+  - name: SW2
+    ip: 192.168.10.5
+    snmp: true
+    cli: true 
+    vendor: cisco
+    username: nlabs
+    auth_password: capstondesign
+    priv_password: capstondesign
+    password: "1004"
+
+  # - name: SW3
+  #   ip: 192.168.10.4
+  #   snmp: true
+  #   cli: true 
+  #   vendor: cisco
+  #   username: nlabs
+  #   auth_password: capstondesign
+  #   #priv_password: capstondesign
+  #   password: "1004"
+  
+  # - name: SW4
+  #   ip: 192.168.30.5
+  #   snmp: true
+  #   cli: true 
+  #   vendor: cisco
+  #   username: nlabs
+  #   auth_password: capstondesign
+  #   #priv_password: capstondesign
+  #   password: "1004"
+
+  # - name: SW5
+  #   ip: 192.168.30.4
+  #   snmp: true
+  #   cli: true 
+  #   vendor: cisco
+  #   username: nlabs
+  #   auth_password: capstondesign
+  #   #priv_password: capstondesign
+  #   password: "1004"
+    
