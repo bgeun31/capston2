@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from ssh_terminal import SSHTerminal
 import paramiko
 import fetch_topology_snmpv3
+from fetch_topology_snmpv3 import normalize_device_name  # 호스트 이름 정규화 함수 임포트
 import json
 import os
 

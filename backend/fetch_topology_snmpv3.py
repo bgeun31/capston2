@@ -10,6 +10,13 @@ from pysnmp.hlapi import (
     usmHMACSHAAuthProtocol, usmAesCfb128Protocol
 )
 
+# 도메인 이름을 제거하는 함수 추가
+def normalize_device_name(name):
+    # 'SW2.capston.com'과 같은 형식에서 순수 호스트명만 추출
+    if '.' in name:
+        return name.split('.')[0]
+    return name
+
 def init_db(db_path="devices.db"):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -128,7 +135,14 @@ def fetch_cli_info_invoke(ip, username, password):
 
     pattern = r"(?P<remotedevice>\S+)\s+(?P<localif>\S+\s+\S+)\s+\d+\s+\S+\s+\S+\s+(?P<remoteif>\S+\s+\S+)"
     matches = re.findall(pattern, output)
-    return matches
+    
+    # 장비 이름에서 도메인을 제거하여 순수 호스트 이름만 사용
+    normalized_matches = []
+    for (remotedevice, localif, remoteif) in matches:
+        normalized_name = normalize_device_name(remotedevice)
+        normalized_matches.append((normalized_name, localif, remoteif))
+    
+    return normalized_matches
 
 def fetch_snmpv3_info(ip, username, auth_pw, priv_pw):
     result = {}
@@ -298,13 +312,19 @@ def main():
     with open("devices.yaml", "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
-    device_id_map = {}
+    # 최초 장비 목록 추가 (devices.yaml에서)
+    device_id_map = {}  # 장비 이름 -> 장비 ID 매핑
+    known_ips = {}      # 장비 IP -> 장비 ID 매핑 (IP가 있는 장비만)
+    
     for dev in config["devices"]:
-        name = dev["name"]
+        name = normalize_device_name(dev["name"])  # 장비 이름 정규화
         ip = dev["ip"]
         vendor = dev.get("vendor", "unknown")
         d_id = insert_device(name, ip, vendor, dev["username"], dev["password"], dev.get("auth_password"), dev.get("priv_password"))
         device_id_map[name] = d_id
+        
+        if ip and ip != "0.0.0.0":
+            known_ips[ip] = d_id
 
         try:
             cache_device_details(d_id, name, ip, vendor, dev["username"], dev["password"], dev.get("auth_password"), dev.get("priv_password"))
@@ -318,16 +338,49 @@ def main():
             except Exception as e:
                 print(f"[SNMPv3] error on {name}: {e}")
 
-        if dev.get("cli", False):
-            try:
-                neighbors = fetch_cli_info_invoke(ip, dev["username"], dev["password"])
-                for (nbrName, localIf, remoteIf) in neighbors:
-                    if nbrName not in device_id_map:
-                        nd_id = insert_device(nbrName, "0.0.0.0", "unknown", "dummy", "dummy")
-                        device_id_map[nbrName] = nd_id
-                    insert_link(d_id, device_id_map[nbrName], localIf, remoteIf)
-            except Exception as ex:
-                print(f"[CLI] fetch failed for {name}({ip}): {ex}")
+    # CDP로 이웃 장비 및 링크 정보 수집
+    pending_links = []  # 링크 정보를 임시 저장 (장비 병합 후 처리)
+    
+    for dev in config["devices"]:
+        name = normalize_device_name(dev["name"])
+        ip = dev["ip"]
+        d_id = device_id_map[name]
+        
+        if not dev.get("cli", False):
+            continue
+            
+        try:
+            neighbors = fetch_cli_info_invoke(ip, dev["username"], dev["password"])
+            for (nbrName, localIf, remoteIf) in neighbors:
+                normalized_nbr_name = normalize_device_name(nbrName)  # CDP에서 발견된 이웃 이름도 정규화
+                
+                # 이미 알고 있는 장비인지 확인
+                if normalized_nbr_name in device_id_map:
+                    # 이미 알려진 장비 ID 사용
+                    nbr_id = device_id_map[normalized_nbr_name]
+                    pending_links.append((d_id, nbr_id, localIf, remoteIf))
+                else:
+                    # 새로운 장비 등록 (IP가 없는 상태로)
+                    nbr_id = insert_device(normalized_nbr_name, "0.0.0.0", "unknown", "dummy", "dummy")
+                    device_id_map[normalized_nbr_name] = nbr_id
+                    pending_links.append((d_id, nbr_id, localIf, remoteIf))
+        except Exception as ex:
+            print(f"[CLI] fetch failed for {name}({ip}): {ex}")
+    
+    # 링크 정보 저장 (중복 제거)
+    unique_links = set()
+    for d_id, nbr_id, localIf, remoteIf in pending_links:
+        # 링크의 방향을 정규화 (작은 ID가 항상 앞에 오도록)
+        if d_id > nbr_id:
+            d_id, nbr_id = nbr_id, d_id
+            localIf, remoteIf = remoteIf, localIf
+            
+        # 링크 핑거프린트 생성
+        link_key = (d_id, nbr_id, localIf, remoteIf)
+        if link_key not in unique_links:
+            unique_links.add(link_key)
+            insert_link(d_id, nbr_id, localIf, remoteIf)
+            print(f"[LINK] Added: {d_id} <-> {nbr_id} ({localIf} <-> {remoteIf})")
 
     fill_missing_device_cache()
     print("=== Done fetching device/link info ===")
