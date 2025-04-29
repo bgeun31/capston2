@@ -30,5 +30,7 @@ export const apiClient = {
     const baseUrl = await getBackendUrl();
     return axios.post(`${baseUrl}${endpoint}`, data);
   },
-  // 필요한 다른 메서드 추가
 };
+
+
+
