@@ -47,6 +47,11 @@ uvicorn app:app --reload --host 0.0.0.0 --port 8000
 npm start
 ```
 
+ - Snort 백엔드(폴더명: capston_snort 확인):
+```sh
+uvicorn app:app --reload --host 0.0.0.0 --port 8000
+```
+
 
 # 초기 작업
  - python 설치, node.js 설치
