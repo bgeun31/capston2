@@ -6,7 +6,7 @@ export default function LogPage() {
   const [logs, setLogs] = useState([]);
 
   useEffect(() => {
-    const ws = new WebSocket("ws://192.168.10.6:8000/ws/snort-log"); // VM IP 확인 필요
+    const ws = new WebSocket("ws://192.168.20.6:8000/ws/snort-log"); // VM IP 확인 필요
     ws.onmessage = (e) => {
       setLogs(prev => [...prev.slice(-49), e.data]);
     };
