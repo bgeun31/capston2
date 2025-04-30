@@ -1,15 +1,16 @@
 // components/layout/Sidebar.jsx
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { Home, Network, TerminalSquare, FileText } from "lucide-react";
+import { Home, Network, TerminalSquare, FileText, Shield } from "lucide-react";
 
 const menuItems = [
   { icon: <Home size={18} />, label: "대시보드", href: "/" },
   { icon: <Network size={18} />, label: "토폴로지", href: "/topology" },
   { icon: <TerminalSquare size={18} />, label: "SSH 터미널", href: "/terminal" },
-  { icon: <FileText size={18} />, label: "로그", href: "/logs" }, // 추가
+  { icon: <Shield size={18} />, label: "IDS", href: "/ids" },
+  { icon: <FileText size={18} />, label: "로그", href: "/logs" },
 ];
-
+장성진바보
 export default function Sidebar() {
   return (
     <div className="w-60 min-h-screen bg-white dark:bg-gray-900 border-r px-4 py-6 space-y-6">
