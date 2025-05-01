@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import axios from "axios";
+import { apiClient } from "../api/apiConfig";
 import { Tabs, Tab } from "@mui/material";
 import SshTerminal from "../components/SshTerminal";
 import { Card } from "../components/ui/card";
@@ -23,16 +24,16 @@ export default function TopologyPage() {
   const fetchDeviceDetail = async (id) => {
     setLoading(true);
     try {
-      const allNodes = await axios.get("/api/topology");
+      const allNodes = await apiClient.get("/api/topology");
       const clickedNode = allNodes.data.nodes.find(n => n.id === id);
       const name = clickedNode?.name || `ID ${id}`;
       setPendingDeviceName(name);
 
-      const res = await axios.get(`/api/device/${id}`);
+      const res = await apiClient.get(`/api/device/${id}`);
       setDeviceCache(prev => ({ ...prev, [id]: res.data }));
       setSelectedDevice(res.data);
 
-      const hist = await axios.get(`/api/device/${id}/cli-history`);
+      const hist = await apiClient.get(`/api/device/${id}/cli-history`);
       setCliHistory(hist.data);
     } catch (err) {
       console.error("장비 정보를 불러오지 못했습니다:", err);
@@ -44,13 +45,13 @@ export default function TopologyPage() {
   const handleCliExecute = async () => {
     if (!cliCommand.trim()) return;
     try {
-      const res = await axios.post("/api/device/cli", {
+      const res = await apiClient.post("/api/device/cli", {
         device_id: selectedDevice.id,
         command: cliCommand
       });
       setCliOutput(res.data.output);
       setCliCommand("");
-      const hist = await axios.get(`/api/device/${selectedDevice.id}/cli-history`);
+      const hist = await apiClient.get(`/api/device/${selectedDevice.id}/cli-history`);
       setCliHistory(hist.data);
     } catch (err) {
       setCliOutput("명령 실행 중 오류 발생: " + err.message);
@@ -58,12 +59,25 @@ export default function TopologyPage() {
   };
 
   useEffect(() => {
-    axios.get("/api/topology").then(res => {
-      const { nodes, links } = res.data;
+    console.log('TopologyPage useEffect 실행 - 데이터 로드 시작');
+    
+    apiClient.get("/api/topology").then(res => {
+      console.log('토폴로지 데이터 응답:', res.data);
+      const nodes = res.data?.nodes || [];
+      const links = res.data?.links || [];
       drawGraph(nodes, links);
+    }).catch(err => {
+      console.error("토폴로지 데이터를 불러오지 못했습니다:", err);
+      drawGraph([], []); // 오류 발생 시 빈 배열로 그래프 초기화
     });
 
     function drawGraph(nodes, links) {
+      if (!Array.isArray(nodes) || !Array.isArray(links)) {
+        console.error("Invalid topology data:", { nodes, links });
+        nodes = [];
+        links = [];
+      }
+
       const svg = d3.select(svgRef.current);
       svg.selectAll("*").remove();
       const width = 800, height = 600;
@@ -177,7 +191,7 @@ export default function TopologyPage() {
                   </div>
 
                   {/* 인터페이스 상태 표 */}
-                  {selectedDevice.interfaces && (
+                  {selectedDevice.interfaces && Array.isArray(selectedDevice.interfaces) && selectedDevice.interfaces.length > 0 && (
                     <div className="mt-4">
                       <h4 className="text-sm font-semibold mb-2 text-gray-700">인터페이스 상태</h4>
                       <table className="w-full text-sm border text-left">
@@ -227,9 +241,12 @@ export default function TopologyPage() {
                   </div>
                   <div className="text-xs text-gray-500 font-medium mt-6">최근 실행 기록</div>
                   <ul className="text-sm list-disc pl-4 space-y-1">
-                    {cliHistory.map((item, idx) => (
+                    {Array.isArray(cliHistory) && cliHistory.map((item, idx) => (
                       <li key={idx}><b>{item.command}</b> — <span className="text-gray-500">{item.timestamp}</span></li>
                     ))}
+                    {(!Array.isArray(cliHistory) || cliHistory.length === 0) && (
+                      <li className="text-gray-400">실행 기록이 없습니다.</li>
+                    )}
                   </ul>
                 </div>
               )}
