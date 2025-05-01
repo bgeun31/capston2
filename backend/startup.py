@@ -98,7 +98,7 @@ def parse_args():
     parser.add_argument('--port', type=int, default=8000, help='백엔드 서버 포트 (기본값: 8000)')
     parser.add_argument('--ngrok-path', type=str, default=None, help='ngrok 실행 파일 경로 (예: C:\\ngrok\\ngrok.exe)')
     parser.add_argument('--ngrok-args', type=str, default='', help='ngrok에 전달할 추가 인자 (예: "--region=ap")')
-    parser.add_argument('--fixed-domain', type=str, default='llama-lucky-mullet.ngrok-free.app', help='고정 도메인 (기본값: llama-lucky-mullet.ngrok-free.app)')
+    parser.add_argument('--fixed-domain', type=str, default='capston.ngrok.app', help='고정 도메인 (기본값: llama-lucky-mullet.ngrok-free.app)')
     parser.add_argument('--host', type=str, default='0.0.0.0', help='백엔드 서버 호스트 (기본값: 0.0.0.0)')
     parser.add_argument('--disable-ngrok', action='store_true', help='ngrok 없이 백엔드 서버만 실행')
     parser.add_argument('--skip-check', action='store_true', help='백엔드 서버 응답 테스트 건너뛰기')

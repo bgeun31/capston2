@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import MainLayout from "../components/layout/MainLayout";
 import axios from "axios";
+import { apiClient } from "../api/apiConfig";
 import {
   MonitorCheck,
   Link2,
@@ -33,45 +34,71 @@ export default function DashboardPage() {
   const [perfData, setPerfData] = useState([]);
 
   useEffect(() => {
-    axios.get("/api/topology").then(res => {
-      const nodes = res.data.nodes || [];
-      const links = res.data.links || [];
-      setDeviceCount(nodes.length);
-      setLinkCount(links.length);
+    console.log('DashboardPage useEffect 실행 - 데이터 로드 시작');
+    
+    apiClient.get("/api/topology")
+      .then(res => {
+        console.log('토폴로지 데이터 응답:', res.data);
+        const nodes = res.data?.nodes || [];
+        const links = res.data?.links || [];
+        setDeviceCount(nodes.length);
+        setLinkCount(links.length);
 
-      const typeMap = { router: 0, switch: 0, ap: 0, firewall: 0 };
-      nodes.forEach(n => {
-        const type = (n.type || "").toLowerCase();
-        if (type.includes("router")) typeMap.router++;
-        else if (type.includes("switch")) typeMap.switch++;
-        else if (type.includes("ap")) typeMap.ap++;
-        else if (type.includes("firewall")) typeMap.firewall++;
+        const typeMap = { router: 0, switch: 0, ap: 0, firewall: 0 };
+        nodes.forEach(n => {
+          const type = (n.type || "").toLowerCase();
+          if (type.includes("router")) typeMap.router++;
+          else if (type.includes("switch")) typeMap.switch++;
+          else if (type.includes("ap")) typeMap.ap++;
+          else if (type.includes("firewall")) typeMap.firewall++;
+        });
+        setRouterCount(typeMap.router);
+        setSwitchCount(typeMap.switch);
+        setApCount(typeMap.ap);
+        setFirewallCount(typeMap.firewall);
+      })
+      .catch(err => {
+        console.error('토폴로지 데이터 로드 실패:', err);
       });
-      setRouterCount(typeMap.router);
-      setSwitchCount(typeMap.switch);
-      setApCount(typeMap.ap);
-      setFirewallCount(typeMap.firewall);
-    });
 
-    axios.get("/api/devices").then((res) => {
-      setDeviceList(res.data);
-      if (res.data.length > 0) {
-        setSelectedDeviceId(res.data[0].id);
-      }
-    });
+    apiClient.get("/api/devices")
+      .then((res) => {
+        console.log('장비 데이터 응답:', res.data);
+        setDeviceList(res.data);
+        if (res.data.length > 0) {
+          setSelectedDeviceId(res.data[0].id);
+        }
+      })
+      .catch(err => {
+        console.error('장비 데이터 로드 실패:', err);
+      });
 
-    axios.get("/api/alerts").then(res => {
-      setAlerts(res.data);
-    });
+    apiClient.get("/api/alerts")
+      .then(res => {
+        console.log('알림 데이터 응답:', res.data);
+        setAlerts(res.data);
+      })
+      .catch(err => {
+        console.error('알림 데이터 로드 실패:', err);
+      });
 
-    axios.get("/api/events").then(res => {
-      setEvents(res.data);
-    });
+    apiClient.get("/api/events")
+      .then(res => {
+        console.log('이벤트 데이터 응답:', res.data);
+        setEvents(res.data);
+      })
+      .catch(err => {
+        console.error('이벤트 데이터 로드 실패:', err);
+      });
   }, []);
 
   useEffect(() => {
     if (selectedDeviceId) {
-      axios.get(`/api/performance?device_id=${selectedDeviceId}`).then((res) => setPerfData(res.data));
+      apiClient.get(`/api/performance?device_id=${selectedDeviceId}`)
+        .then((res) => setPerfData(res.data))
+        .catch(err => {
+          console.error('성능 데이터 로드 실패:', err);
+        });
     }
   }, [selectedDeviceId]);
 
@@ -105,7 +132,7 @@ export default function DashboardPage() {
             </div>
             <div>
               <h4 className="text-sm text-gray-600 font-medium">보안 경고</h4>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{alerts.length}</p>
+              <p className="text-2xl font-bold text-gray-800 mt-1">{Array.isArray(alerts) ? alerts.length : "N/A"}</p>
             </div>
           </div>
         </div>
@@ -113,12 +140,15 @@ export default function DashboardPage() {
         <div className="bg-white rounded-lg border p-4 shadow-sm">
           <h3 className="text-lg font-semibold mb-4">최근 이벤트</h3>
           <ul className="space-y-2">
-            {events.map((e, i) => (
+            {events && Array.isArray(events) && events.map((e, i) => (
               <li key={i} className="text-sm text-gray-800">
                 <strong>{e.title}</strong>
                 <div className="text-xs text-gray-500">{e.description} - {e.timestamp}</div>
               </li>
             ))}
+            {(!events || !Array.isArray(events) || events.length === 0) && (
+              <li className="text-sm text-gray-500">이벤트가 없습니다.</li>
+            )}
           </ul>
         </div>
 
@@ -133,9 +163,12 @@ export default function DashboardPage() {
               onChange={(e) => setSelectedDeviceId(e.target.value)}
               className="border px-3 py-1 rounded"
             >
-              {deviceList.map((dev) => (
+              {deviceList && Array.isArray(deviceList) && deviceList.map((dev) => (
                 <option key={dev.id} value={dev.id}>{dev.name}</option>
               ))}
+              {(!deviceList || !Array.isArray(deviceList) || deviceList.length === 0) && (
+                <option value="">장비 없음</option>
+              )}
             </select>
           </div>
 
@@ -145,7 +178,7 @@ export default function DashboardPage() {
             <div className="h-72">
               <h4 className="text-sm text-gray-600 font-medium mb-2">CPU 사용률 (%)</h4>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={perfData}>
+                <AreaChart data={Array.isArray(perfData) ? perfData : []}>
                   <XAxis dataKey="time" />
                   <YAxis domain={[0, 100]} />
                   <CartesianGrid strokeDasharray="3 3" />
@@ -159,7 +192,7 @@ export default function DashboardPage() {
             <div className="h-72">
               <h4 className="text-sm text-gray-600 font-medium mb-2">Memory 사용률 (%)</h4>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={perfData}>
+                <AreaChart data={Array.isArray(perfData) ? perfData : []}>
                   <XAxis dataKey="time" />
                   <YAxis domain={[0, 100]} />
                   <CartesianGrid strokeDasharray="3 3" />
