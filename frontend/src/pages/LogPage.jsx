@@ -20,7 +20,7 @@ export default function LogPage() {
     <MainLayout>
       <div className="text-lg font-bold mb-4">📄 실시간 Snort 로그</div>
       <div className="bg-black text-green-400 p-4 rounded h-[480px] overflow-auto font-mono text-sm shadow border">
-        {logs.map((line, i) => (
+        {[...logs].reverse().map((line, i) => (
           <div key={i}>{line}</div>
         ))}
       </div>
