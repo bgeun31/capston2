@@ -118,31 +118,42 @@ def cache_device_details(device_id, name, ip, vendor, username, password, auth_p
     conn.commit()
     conn.close()
 
-
 def fetch_cli_info_invoke(ip, username, password):
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(ip, username=username, password=password, timeout=5)
+    """
+    CDP 이웃 정보를 Netmiko로 수집해
+    (remoteDevice, localIf, remoteIf) 튜플 리스트를 반환
+    """
+    dev = {
+        "device_type": "cisco_ios",
+        "host": ip,
+        "username": username,
+        "password": password,
+        "fast_cli": True,
+    }
 
-    channel = ssh.invoke_shell()
-    time.sleep(1)
-    channel.send("terminal length 0\n")
-    time.sleep(1)
-    channel.send("show cdp neighbors\n")
-    time.sleep(1)
-    output = channel.recv(65535).decode('utf-8', errors='ignore')
-    ssh.close()
+    try:
+        with ConnectHandler(**dev) as conn:
+            conn.send_command("terminal length 0", strip_prompt=False)
+            output = conn.send_command("show cdp neighbors", expect_string=r"#")
+    except Exception as e:
+        print(f"[CLI] CDP fetch error on {ip}: {e}")
+        return []                       # ← 실패 시 빈 리스트 반환
 
-    pattern = r"(?P<remotedevice>\S+)\s+(?P<localif>\S+\s+\S+)\s+\d+\s+\S+\s+\S+\s+(?P<remoteif>\S+\s+\S+)"
+    # ── CDP 텍스트 파싱 ─────────────────────────────
+    pattern = (
+        r"(?P<remotedevice>\S+)\s+"            # 이웃 장비 ID
+        r"(?P<localif>\S+\s+\S+)\s+\d+\s+\S+\s+\S+\s+"
+        r"(?P<remoteif>\S+\s+\S+)"             # 이웃의 포트
+    )
     matches = re.findall(pattern, output)
-    
-    # 장비 이름에서 도메인을 제거하여 순수 호스트 이름만 사용
+
+    # 호스트 이름 정규화 + 결과 리스트 구성
     normalized_matches = []
-    for (remotedevice, localif, remoteif) in matches:
+    for remotedevice, localif, remoteif in matches:
         normalized_name = normalize_device_name(remotedevice)
         normalized_matches.append((normalized_name, localif, remoteif))
-    
-    return normalized_matches
+
+    return normalized_matches              # ← 반드시 리스트 반환
 
 def fetch_snmpv3_info(ip, username, auth_pw, priv_pw):
     result = {}
