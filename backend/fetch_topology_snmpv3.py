@@ -1,5 +1,5 @@
 import yaml
-import paramiko
+from netmiko import ConnectHandler
 import re
 import time
 import sqlite3
@@ -209,39 +209,38 @@ def extract_memory_percentage(output: str):
 
 def fetch_status_info_invoke(ip, username, password):
     try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(ip, username=username, password=password, timeout=5)
-        channel = ssh.invoke_shell()
-        time.sleep(1)
-        channel.send("terminal length 0\n")
-        time.sleep(1)
-        channel.send("show processes cpu | include CPU utilization\n")
-        time.sleep(1)
-        out1 = channel.recv(65535).decode('utf-8', 'ignore')
-        channel.send("show processes memory | include Processor\n")
-        time.sleep(1)
-        out2 = channel.recv(65535).decode('utf-8', 'ignore')
-        channel.send("show ip interface brief\n")
-        time.sleep(1)
-        out3 = channel.recv(65535).decode('utf-8', 'ignore')
-        ssh.close()
+        cisco = dict(
+            device_type="cisco_ios",
+            host=ip,
+            username=username,
+            password=password,
+            fast_cli=True,
+        )
+        with ConnectHandler(**cisco) as conn:
+            conn.send_command("terminal length 0", strip_prompt=False)
 
-        # CPU 및 메모리 사용률 퍼센트로 파싱
-        cpu_usage = extract_cpu_percentage(out1)
-        memory_usage = extract_memory_percentage(out2)
+            cpu_raw = conn.send_command(
+                "show processes cpu | include CPU utilization", expect_string=r"#"
+            )
+            mem_raw = conn.send_command(
+                "show processes memory | include Processor", expect_string=r"#"
+            )
+            int_raw = conn.send_command(
+                "show ip interface brief", expect_string=r"#"
+            )
 
         return {
-            "cpuUsage": cpu_usage,
-            "memoryUsage": memory_usage,
-            "interfaces": parse_interface_status(out3)
+            "cpuUsage": extract_cpu_percentage(cpu_raw),
+            "memoryUsage": extract_memory_percentage(mem_raw),
+            "interfaces": parse_interface_status(int_raw),
         }
+
     except Exception as e:
-        print(f"[CLI fetch_status_info_invoke] Error for {ip}: {e}")
+        print(f"[fetch_status_info_invoke] {ip} → {e}")
         return {
             "cpuUsage": "N/A",
             "memoryUsage": "N/A",
-            "interfaces": []
+            "interfaces": [],
         }
 
 def fetch_device_info_invoke(ip, username, password):
@@ -249,37 +248,42 @@ def fetch_device_info_invoke(ip, username, password):
         "hostname": "N/A",
         "model": "N/A",
         "version": "N/A",
-        "interfaceCount": 0
+        "interfaceCount": 0,
     }
+
     try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(ip, username=username, password=password, timeout=5)
-        channel = ssh.invoke_shell()
-        time.sleep(1)
-        channel.send("terminal length 0\n")
-        time.sleep(1)
-        channel.send("show version\n")
-        time.sleep(2)
-        ver_output = channel.recv(65535).decode('utf-8', 'ignore')
-        host_match = re.search(r"^(\S+)\s+uptime is", ver_output, re.MULTILINE)
-        if host_match:
-            result["hostname"] = host_match.group(1)
-        ver_match = re.search(r"Version\s+([\d()\.A-Za-z]+)", ver_output)
-        if ver_match:
-            result["version"] = ver_match.group(1)
-        model_match = re.search(r"Cisco\s+(\S+)\s+.*processor", ver_output, re.IGNORECASE)
-        if model_match:
-            result["model"] = model_match.group(1)
-        channel.send("show ip interface brief\n")
-        time.sleep(2)
-        int_output = channel.recv(65535).decode('utf-8', 'ignore')
-        lines = int_output.strip().splitlines()
-        count = sum(1 for ln in lines if len(ln.split()) >= 6 and "Interface" not in ln)
-        result["interfaceCount"] = count
-        ssh.close()
+        cisco = dict(
+            device_type="cisco_ios",
+            host=ip,
+            username=username,
+            password=password,
+            fast_cli=True,
+        )
+        with ConnectHandler(**cisco) as conn:
+            conn.send_command("terminal length 0", strip_prompt=False)
+
+            # show version
+            ver_output = conn.send_command("show version", expect_string=r"#")
+
+            if m := re.search(r"^(\S+)\s+uptime is", ver_output, re.M):
+                result["hostname"] = m.group(1)
+
+            if m := re.search(r"Version\s+([\d()\.A-Za-z]+)", ver_output):
+                result["version"] = m.group(1)
+
+            if m := re.search(r"Cisco\s+(\S+)\s+.*processor", ver_output, re.I):
+                result["model"] = m.group(1)
+
+            # interface count
+            int_brief = conn.send_command("show ip interface brief", expect_string=r"#")
+            lines = int_brief.strip().splitlines()
+            result["interfaceCount"] = sum(
+                1 for ln in lines if len(ln.split()) >= 6 and "Interface" not in ln
+            )
+
     except Exception as e:
-        print(f"[fetch_device_info_invoke] Error for {ip}: {e}")
+        print(f"[fetch_device_info_invoke] {ip} → {e}")
+
     return result
 
 def parse_interface_status(output):

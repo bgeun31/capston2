@@ -7,13 +7,14 @@ from fastapi import WebSocket, WebSocketDisconnect
 from fastapi import Depends
 from apscheduler.schedulers.background import BackgroundScheduler
 from ssh_terminal import SSHTerminal
-import paramiko
+from netmiko import ConnectHandler 
 import fetch_topology_snmpv3
 from fetch_topology_snmpv3 import normalize_device_name  # 호스트 이름 정규화 함수 임포트
 import json
 import os
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-import asyncio, subprocess     # ⬅️ 새로 추가
+import asyncio                                # subprocess 필요 없어짐
+from snort_log_streamer import stream_snort_log   # ✅ 추가
 
 scheduler = BackgroundScheduler()
 
@@ -72,48 +73,59 @@ def get_device_list():
 def execute_cli(req: CLIRequest):
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
-    c.execute("SELECT ip, username, password FROM device WHERE device_id = ?", (req.device_id,))
+    c.execute(
+        "SELECT ip, username, password FROM device WHERE device_id = ?",
+        (req.device_id,),
+    )
     row = c.fetchone()
+    conn.close()
+
     if not row:
-        conn.close()
         raise HTTPException(status_code=404, detail="Device not found")
 
     ip, username, password = row
-    conn.close()
 
     try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(ip, username=username, password=password, timeout=5)
-        channel = ssh.invoke_shell()
-        import time
-        time.sleep(1)
-        channel.send("terminal length 0\n")
-        time.sleep(1)
-        channel.send(req.command + "\n")
-        time.sleep(2)
-        output = channel.recv(65535).decode('utf-8', 'ignore')
-        ssh.close()
+        # ───────── Netmiko 세션 ─────────
+        cisco = {
+            "device_type": "cisco_ios",
+            "host": ip,
+            "username": username,
+            "password": password,
+            "fast_cli": True,
+        }
+        with ConnectHandler(**cisco) as ssh:
+            ssh.send_command("terminal length 0", strip_prompt=False)
+            output = ssh.send_command(
+                req.command, expect_string=r"#", strip_prompt=False
+            )
 
+        # ───────── 결과 DB 기록 ─────────
         conn = sqlite3.connect("devices.db")
         c = conn.cursor()
-        c.execute('''
+        c.execute(
+            """
             CREATE TABLE IF NOT EXISTS cli_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id INTEGER,
-                command TEXT,
-                output TEXT,
+                command   TEXT,
+                output    TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
-        c.execute("INSERT INTO cli_history (device_id, command, output) VALUES (?, ?, ?)",
-                  (req.device_id, req.command, output))
+            """
+        )
+        c.execute(
+            "INSERT INTO cli_history (device_id, command, output) VALUES (?, ?, ?)",
+            (req.device_id, req.command, output),
+        )
         conn.commit()
         conn.close()
 
         return {"output": output}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/device/{device_id}")
 def get_device_detail(device_id: int):
@@ -358,23 +370,8 @@ def collect_all_stats():
 
 @app.websocket("/ws/snort-log")
 async def snort_log_ws(ws: WebSocket):
-    await ws.accept()
-    # tail -F 로 파일 변경분 스트리밍
-    proc = await asyncio.create_subprocess_exec(
-        "tail", "-F", "/var/log/snort/snort.alert.fast",
-        stdout=subprocess.PIPE,
-    )
-    try:
-        while True:
-            line = await proc.stdout.readline()
-            if not line:               # 파일 끝(거의 안 옴)
-                await asyncio.sleep(0.1)
-                continue
-            await ws.send_text(line.decode(errors="ignore"))
-    except WebSocketDisconnect:
-        pass
-    finally:
-        proc.kill()
+    """Paramiko 로 원격 tail -F 를 중계"""
+    await stream_snort_log(ws)
 
 # 서버 시작 시 스케줄러도 시작
 @app.on_event("startup")

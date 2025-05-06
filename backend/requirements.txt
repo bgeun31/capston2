@@ -4,6 +4,8 @@ pyyaml
 requests
 fastapi
 uvicorn
-paramiko
 websockets
 apscheduler
+
+paramiko<3.0
+netmiko>=4.0.0
