@@ -1,7 +1,6 @@
 # app.py (수정본 - 캐시 기반 + 데이터 없을 때 예외 처리 추가)
 
 import sqlite3
-from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi import WebSocket, WebSocketDisconnect
@@ -13,6 +12,8 @@ import fetch_topology_snmpv3
 from fetch_topology_snmpv3 import normalize_device_name  # 호스트 이름 정규화 함수 임포트
 import json
 import os
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+import asyncio, subprocess     # ⬅️ 새로 추가
 
 scheduler = BackgroundScheduler()
 
@@ -354,6 +355,26 @@ def collect_all_stats():
 
         except Exception as e:
             print(f"[STATS] {ip} 수집 실패: {e}")
+
+@app.websocket("/ws/snort-log")
+async def snort_log_ws(ws: WebSocket):
+    await ws.accept()
+    # tail -F 로 파일 변경분 스트리밍
+    proc = await asyncio.create_subprocess_exec(
+        "tail", "-F", "/var/log/snort/snort.alert.fast",
+        stdout=subprocess.PIPE,
+    )
+    try:
+        while True:
+            line = await proc.stdout.readline()
+            if not line:               # 파일 끝(거의 안 옴)
+                await asyncio.sleep(0.1)
+                continue
+            await ws.send_text(line.decode(errors="ignore"))
+    except WebSocketDisconnect:
+        pass
+    finally:
+        proc.kill()
 
 # 서버 시작 시 스케줄러도 시작
 @app.on_event("startup")

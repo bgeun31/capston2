@@ -2,9 +2,8 @@
 import axios from 'axios';
 
 // 고정 백엔드 URL 사용 
-// const backendBaseUrl = 'https://llama-lucky-mullet.ngrok-free.app'; // ngrok URL (확인 화면 문제 발생)
-// const backendBaseUrl = 'http://localhost:8000'; // 로컬 개발 서버 사용 (FastAPI 기본 포트)
-const backendBaseUrl = 'https://capston.ngrok.app'; // ngrok 유료 버전 URL (확인 화면 없음)
+const backendBaseUrl =
+  process.env.REACT_APP_API_BASE || 'http://localhost:8000';
 
 // 디버깅용 로그 활성화
 const debugMode = true;

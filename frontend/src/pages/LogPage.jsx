@@ -1,5 +1,6 @@
 // pages/LogPage.jsx
 import React, { useEffect, useState, useRef } from "react";
+import { WS_BASE } from "../utils/WsBase";
 import MainLayout from "../components/layout/MainLayout";
 
 export default function LogPage() {
@@ -32,7 +33,7 @@ export default function LogPage() {
   };
 
   useEffect(() => {
-    const ws = new WebSocket("ws://192.168.20.8:8000/ws/snort-log"); // VM IP 확인 필요
+    const ws = new WebSocket(`${WS_BASE}/ws/snort-log`);
     
     ws.onmessage = (e) => {
       if (isCapturing) {
