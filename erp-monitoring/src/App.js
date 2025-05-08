@@ -7,6 +7,8 @@ import AssetPage from './pages/AssetPage';
 import EmployeePage from './pages/EmployeePage';
 import DowntimePage from './pages/DowntimePage';
 import MonitoringPage from './pages/MonitoringPage';
+import AdminLogin from './pages/AdminLogin';
+import AdminPage from './pages/AdminPage';
 
 function App() {
   return (
@@ -18,6 +20,8 @@ function App() {
         <Route path="/employees" element={<EmployeePage />} />
         <Route path="/downtime" element={<DowntimePage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
+        <Route path="/admin-login" element={<AdminLogin />} />
+        <Route path="/admin" element={<AdminPage />} />
       </Routes>
     </Router>
   );
