@@ -14,30 +14,79 @@ export default function IDSPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
 
-  useEffect(() => {
-    const ws = new WebSocket(`${WS_BASE}/ws/ids-alerts`);
-    ws.onopen = () => setLoadingAlerts(false);
-    ws.onmessage = (e) => {
-      try {
-        const newAlert = JSON.parse(e.data);
-        setAlerts((prev) =>
-          prev.some((a) => a.id === newAlert.id) ? prev : [...prev, newAlert]
-        );
-      } catch {
-        setErrorAlerts("알림 처리 오류");
-      }
-    };
-    ws.onerror = () => setErrorAlerts("알림 연결 오류");
-    return () => ws.close();
-  }, []);
+  // ✅ IDS 알림 WebSocket 구독
+useEffect(() => {
+  const ws = new WebSocket(`${WS_BASE}/ws/ids-alerts`);
+  console.log("🔌 [IDS 알림] WebSocket 연결 시도...");
 
-  useEffect(() => {
-    const ws2 = new WebSocket(`${WS_BASE}/ws/ids-events`);
-    ws2.onopen = () => setLoadingEvents(false);
-    ws2.onmessage = (e) => setEvents((prev) => [...prev, e.data]);
-    ws2.onerror = () => setErrorEvents("이벤트 연결 오류");
-    return () => ws2.close();
-  }, []);
+  ws.onopen = () => {
+    console.log("🟢 [IDS 알림] WebSocket 연결 완료");
+    setLoadingAlerts(false);
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const parsed = JSON.parse(e.data);
+      
+      if (!parsed?.id || !parsed?.timestamp || !parsed?.type) {
+        console.warn("❗ 필드 누락 경고:", parsed);
+        return;
+      }
+  
+      setAlerts((prev) =>
+        prev.some((a) => a.id === parsed.id) ? prev : [...prev, parsed]
+      );
+    } catch (err) {
+      console.error("❌ [IDS 알림] JSON 파싱 실패:", e.data, err);
+      setErrorAlerts("알림 처리 오류");
+    }
+  };
+
+  ws.onerror = (err) => {
+    console.error("🚨 [IDS 알림] WebSocket 오류:", err);
+    setErrorAlerts("알림 연결 오류");
+  };
+
+  ws.onclose = () => {
+    console.warn("🔴 [IDS 알림] WebSocket 연결 종료됨");
+  };
+
+  return () => {
+    console.log("🔌 [IDS 알림] WebSocket 연결 해제");
+    ws.close();
+  };
+}, []);
+
+// ✅ IDS 이벤트 WebSocket 구독
+useEffect(() => {
+  const ws2 = new WebSocket(`${WS_BASE}/ws/ids-events`);
+  console.log("🔌 [IDS 이벤트] WebSocket 연결 시도...");
+
+  ws2.onopen = () => {
+    console.log("🟢 [IDS 이벤트] WebSocket 연결 완료");
+    setLoadingEvents(false);
+  };
+
+  ws2.onmessage = (e) => {
+    console.log("📥 [IDS 이벤트] 수신 데이터:", e.data);
+    setEvents((prev) => [...prev, e.data]);
+  };
+
+  ws2.onerror = (err) => {
+    console.error("🚨 [IDS 이벤트] WebSocket 오류:", err);
+    setErrorEvents("이벤트 연결 오류");
+  };
+
+  ws2.onclose = () => {
+    console.warn("🔴 [IDS 이벤트] WebSocket 연결 종료됨");
+  };
+
+  return () => {
+    console.log("🔌 [IDS 이벤트] WebSocket 연결 해제");
+    ws2.close();
+  };
+}, []);
+
 
   const handleResolveAll = () => {
     setAlerts(alerts.map((alert) => ({ ...alert, status: "해결됨" })));
