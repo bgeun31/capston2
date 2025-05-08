@@ -6,6 +6,10 @@ fastapi
 uvicorn
 websockets
 apscheduler
+sqlalchemy
+pymysql
+dotenv
+backoff
 
 paramiko<3.0
 netmiko>=4.0.0

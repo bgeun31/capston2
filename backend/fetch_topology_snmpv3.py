@@ -9,6 +9,7 @@ from pysnmp.hlapi import (
     ContextData, ObjectType, ObjectIdentity, UsmUserData,
     usmHMACSHAAuthProtocol, usmAesCfb128Protocol
 )
+from db_multi import dual_commit, LocalSession
 
 # 도메인 이름을 제거하는 함수 추가
 def normalize_device_name(name):
