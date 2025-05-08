@@ -15,8 +15,10 @@ import os
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 import asyncio                                # subprocess 필요 없어짐
 from snort_log_streamer import stream_snort_log   # ✅ 추가
+from snort_log_streamer import stream_ids_events
 from sqlalchemy import text
 from db_multi import LocalSession, dual_commit
+import uuid
 
 scheduler = BackgroundScheduler()
 
@@ -395,6 +397,36 @@ def collect_all_stats():
 async def snort_log_ws(ws: WebSocket):
     """Paramiko 로 원격 tail -F 를 중계"""
     await stream_snort_log(ws)
+
+@app.websocket("/ws/ids-alerts")
+async def ids_alerts_ws(websocket: WebSocket):
+    """
+    Snort IDS 알림 로그를 WebSocket으로 실시간 전송
+    (/var/log/snort/alert → stream_snort_log)
+    """
+    await stream_snort_log(websocket)
+
+@app.get("/api/ids/alerts")
+def get_ids_alerts():
+    alerts = []
+    try:
+        with open("/var/log/snort/ids-alerts.jsonl", encoding="utf-8") as f:
+            for line in f:
+                alerts.append(json.loads(line))
+    except FileNotFoundError:
+        # 아직 파일이 없으면 빈 배열
+        return []
+    except Exception as e:
+        raise HTTPException(500, f"알림 파일 읽기 실패: {e}")
+    return alerts
+
+@app.websocket("/ws/ids-events")
+async def ids_events_ws(websocket: WebSocket):
+    """
+    /var/log/snort/ids-events.log 파일을 tail -F 하여
+    WebSocket으로 실시간 전송합니다.
+    """
+    await stream_ids_events(websocket)
 
 # 서버 시작 시 스케줄러도 시작
 @app.on_event("startup")
