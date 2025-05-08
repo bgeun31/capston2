@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 load_dotenv()                          # .env → 환경변수 로드
 
-LOCAL_URL  = "sqlite:///./device.db"   # 기존 파일
+LOCAL_URL  = "sqlite:///./devices.db"   # 기존 파일
 CLOUD_URL  = os.getenv("DB_URL")       # RDS 연결 문자열
 
 local_eng  = create_engine(LOCAL_URL, connect_args={"check_same_thread": False})

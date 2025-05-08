@@ -15,6 +15,8 @@ import os
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 import asyncio                                # subprocess 필요 없어짐
 from snort_log_streamer import stream_snort_log   # ✅ 추가
+from sqlalchemy import text
+from db_multi import LocalSession, dual_commit
 
 scheduler = BackgroundScheduler()
 
@@ -340,13 +342,36 @@ def get_performance_summary():
         "devices": device_total
     }
 
+@app.get("/api/devices/count")
+def get_device_count():
+    """총 장비 수 카드용"""
+    with LocalSession() as ses:
+        cnt = ses.execute(text("SELECT COUNT(*) FROM device")).scalar()
+    return {"count": cnt}
+
+@app.get("/api/links/count")
+def get_link_count():
+    """활성 링크 수 카드용"""
+    with LocalSession() as ses:
+        cnt = ses.execute(text("SELECT COUNT(*) FROM link_info")).scalar()
+    return {"count": cnt}
+
+@app.get("/api/summary")
+def get_summary():
+    """대시보드 한 번에 묶어서 가져오기(선택)"""
+    with LocalSession() as ses:
+        dev  = ses.execute(text("SELECT COUNT(*) FROM device")).scalar()
+        link = ses.execute(text("SELECT COUNT(*) FROM link_info")).scalar()
+        alert = 3            # TODO: IDS 테이블 연동 시 계산
+    return {"devices": dev, "links": link, "alerts": alert}
+
 def collect_all_stats():
     print("[STATS] CPU/MEM 정보 수집 시작")
-    conn = sqlite3.connect("devices.db")
-    c = conn.cursor()
-    c.execute("SELECT device_id, ip, username, password FROM device")
-    devices = c.fetchall()
-    conn.close()
+
+    with LocalSession() as ses:
+        devices = ses.execute(text(
+            "SELECT device_id, ip, username, password FROM device"
+        )).all()
 
     for device_id, ip, username, password in devices:
         try:
@@ -354,15 +379,13 @@ def collect_all_stats():
             cpu = stats["cpuUsage"]
             mem = stats["memoryUsage"]
 
-            conn = sqlite3.connect("devices.db")
-            c = conn.cursor()
-            c.execute("""
+            dual_commit(
+                """
                 INSERT INTO device_stats (device_id, cpu_usage, mem_usage)
-                VALUES (?, ?, ?)
-            """, (device_id, cpu, mem))
-            conn.commit()
-            conn.close()
-
+                VALUES (:id, :cpu, :mem)
+                """,
+                {"id": device_id, "cpu": cpu, "mem": mem}
+            )
             print(f"[STATS] {ip} → CPU={cpu}, MEM={mem}")
 
         except Exception as e:
