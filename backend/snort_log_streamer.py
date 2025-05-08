@@ -17,7 +17,7 @@ SSH_KEY  = r"C:\Users\NLab\.ssh\id_rsa"  # 개인키 경로
 # SSH_PW = "1234"                    # 키 대신 비밀번호 사용 시 주석 해제
 
 # Snort alert 파일 경로
-SNORT_LOG_PATH = "/var/log/snort/snort.alert.fast"
+SNORT_LOG_PATH = "/var/log/snort/alert"
 
 
 async def stream_snort_log(websocket: WebSocket) -> None:
