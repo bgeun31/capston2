@@ -27,9 +27,17 @@ useEffect(() => {
   ws.onmessage = (e) => {
     try {
       const parsed = JSON.parse(e.data);
-      
-      if (!parsed?.id || !parsed?.timestamp || !parsed?.type) {
-        console.warn("❗ 필드 누락 경고:", parsed);
+  
+      // ⚠️ 오류 메시지일 경우, 별도 처리
+      if (parsed?.type === "error") {
+        console.warn("⚠️ IDS 오류 메시지:", parsed.message);
+        setErrorAlerts(parsed.message); // 또는 setEvents([...events, parsed.message]);
+        return;
+      }
+  
+      // ✅ 정상 알림 데이터 처리
+      if (!parsed?.id || !parsed?.timestamp) {
+        console.warn("❗ 필수 필드 누락:", parsed);
         return;
       }
   
@@ -37,10 +45,11 @@ useEffect(() => {
         prev.some((a) => a.id === parsed.id) ? prev : [...prev, parsed]
       );
     } catch (err) {
-      console.error("❌ [IDS 알림] JSON 파싱 실패:", e.data, err);
-      setErrorAlerts("알림 처리 오류");
+      console.error("❌ JSON 파싱 실패:", e.data, err);
+      setErrorAlerts("알림 처리 오류 (JSON 파싱 실패)");
     }
   };
+  
 
   ws.onerror = (err) => {
     console.error("🚨 [IDS 알림] WebSocket 오류:", err);
