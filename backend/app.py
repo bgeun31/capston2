@@ -1,18 +1,23 @@
 # app.py (수정본 - 캐시 기반 + 데이터 없을 때 예외 처리 추가)
 
 import sqlite3
-from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi import Depends
 from apscheduler.schedulers.background import BackgroundScheduler
 from ssh_terminal import SSHTerminal
-import paramiko
+from netmiko import ConnectHandler 
 import fetch_topology_snmpv3
 from fetch_topology_snmpv3 import normalize_device_name  # 호스트 이름 정규화 함수 임포트
 import json
 import os
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+import asyncio                                # subprocess 필요 없어짐
+from snort_log_streamer import stream_snort_log, stream_ids_alerts, stream_ids_events   # ✅ 추가
+from sqlalchemy import text
+from db_multi import LocalSession, dual_commit
+import uuid
 
 scheduler = BackgroundScheduler()
 
@@ -71,48 +76,59 @@ def get_device_list():
 def execute_cli(req: CLIRequest):
     conn = sqlite3.connect("devices.db")
     c = conn.cursor()
-    c.execute("SELECT ip, username, password FROM device WHERE device_id = ?", (req.device_id,))
+    c.execute(
+        "SELECT ip, username, password FROM device WHERE device_id = ?",
+        (req.device_id,),
+    )
     row = c.fetchone()
+    conn.close()
+
     if not row:
-        conn.close()
         raise HTTPException(status_code=404, detail="Device not found")
 
     ip, username, password = row
-    conn.close()
 
     try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(ip, username=username, password=password, timeout=5)
-        channel = ssh.invoke_shell()
-        import time
-        time.sleep(1)
-        channel.send("terminal length 0\n")
-        time.sleep(1)
-        channel.send(req.command + "\n")
-        time.sleep(2)
-        output = channel.recv(65535).decode('utf-8', 'ignore')
-        ssh.close()
+        # ───────── Netmiko 세션 ─────────
+        cisco = {
+            "device_type": "cisco_ios",
+            "host": ip,
+            "username": username,
+            "password": password,
+            "fast_cli": True,
+        }
+        with ConnectHandler(**cisco) as ssh:
+            ssh.send_command("terminal length 0", strip_prompt=False)
+            output = ssh.send_command(
+                req.command, expect_string=r"#", strip_prompt=False
+            )
 
+        # ───────── 결과 DB 기록 ─────────
         conn = sqlite3.connect("devices.db")
         c = conn.cursor()
-        c.execute('''
+        c.execute(
+            """
             CREATE TABLE IF NOT EXISTS cli_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id INTEGER,
-                command TEXT,
-                output TEXT,
+                command   TEXT,
+                output    TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
-        c.execute("INSERT INTO cli_history (device_id, command, output) VALUES (?, ?, ?)",
-                  (req.device_id, req.command, output))
+            """
+        )
+        c.execute(
+            "INSERT INTO cli_history (device_id, command, output) VALUES (?, ?, ?)",
+            (req.device_id, req.command, output),
+        )
         conn.commit()
         conn.close()
 
         return {"output": output}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/device/{device_id}")
 def get_device_detail(device_id: int):
@@ -327,13 +343,36 @@ def get_performance_summary():
         "devices": device_total
     }
 
+@app.get("/api/devices/count")
+def get_device_count():
+    """총 장비 수 카드용"""
+    with LocalSession() as ses:
+        cnt = ses.execute(text("SELECT COUNT(*) FROM device")).scalar()
+    return {"count": cnt}
+
+@app.get("/api/links/count")
+def get_link_count():
+    """활성 링크 수 카드용"""
+    with LocalSession() as ses:
+        cnt = ses.execute(text("SELECT COUNT(*) FROM link_info")).scalar()
+    return {"count": cnt}
+
+@app.get("/api/summary")
+def get_summary():
+    """대시보드 한 번에 묶어서 가져오기(선택)"""
+    with LocalSession() as ses:
+        dev  = ses.execute(text("SELECT COUNT(*) FROM device")).scalar()
+        link = ses.execute(text("SELECT COUNT(*) FROM link_info")).scalar()
+        alert = 3            # TODO: IDS 테이블 연동 시 계산
+    return {"devices": dev, "links": link, "alerts": alert}
+
 def collect_all_stats():
     print("[STATS] CPU/MEM 정보 수집 시작")
-    conn = sqlite3.connect("devices.db")
-    c = conn.cursor()
-    c.execute("SELECT device_id, ip, username, password FROM device")
-    devices = c.fetchall()
-    conn.close()
+
+    with LocalSession() as ses:
+        devices = ses.execute(text(
+            "SELECT device_id, ip, username, password FROM device"
+        )).all()
 
     for device_id, ip, username, password in devices:
         try:
@@ -341,19 +380,32 @@ def collect_all_stats():
             cpu = stats["cpuUsage"]
             mem = stats["memoryUsage"]
 
-            conn = sqlite3.connect("devices.db")
-            c = conn.cursor()
-            c.execute("""
+            dual_commit(
+                """
                 INSERT INTO device_stats (device_id, cpu_usage, mem_usage)
-                VALUES (?, ?, ?)
-            """, (device_id, cpu, mem))
-            conn.commit()
-            conn.close()
-
+                VALUES (:id, :cpu, :mem)
+                """,
+                {"id": device_id, "cpu": cpu, "mem": mem}
+            )
             print(f"[STATS] {ip} → CPU={cpu}, MEM={mem}")
 
         except Exception as e:
             print(f"[STATS] {ip} 수집 실패: {e}")
+
+@app.websocket("/ws/snort-log")
+async def snort_log_ws(ws: WebSocket):
+    """tail -F /var/log/snort/alert"""
+    await stream_snort_log(ws)
+
+@app.websocket("/ws/ids-alerts")
+async def ids_alerts_ws(websocket: WebSocket):  # ✅ 함수 이름 충돌 방지
+    """tail -F /var/log/snort/ids-alerts.jsonl"""
+    await stream_ids_alerts(websocket)
+
+@app.websocket("/ws/ids-events")
+async def ids_events_ws(websocket: WebSocket):
+    """tail -F /var/log/snort/ids-events.jsonl"""
+    await stream_ids_events(websocket)
 
 # 서버 시작 시 스케줄러도 시작
 @app.on_event("startup")

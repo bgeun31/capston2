@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { Terminal } from "xterm";
+import { WS_BASE } from "../utils/WsBase";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
 
@@ -50,7 +51,7 @@ const SshTerminal = ({ deviceId }) => {
     }, 100);
 
     // WebSocket 연결
-    const socket = new WebSocket(`ws://localhost:8000/ws/terminal/${deviceId}`);
+    const socket = new WebSocket(`${WS_BASE}/ws/terminal/${deviceId}`);
     socketRef.current = socket;
 
     socket.onopen = () => {

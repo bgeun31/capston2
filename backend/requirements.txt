@@ -4,6 +4,13 @@ pyyaml
 requests
 fastapi
 uvicorn
-paramiko
 websockets
 apscheduler
+sqlalchemy
+pymysql
+dotenv
+backoff
+aiofiles
+
+paramiko<3.0
+netmiko>=4.0.0
