@@ -68,6 +68,11 @@ scp -i "C:\Users\NLab\snmp_web_key.pem" -r build/* ec2-user@3.37.1.154:/var/www/
 sudo chown -R apache:apache /var/www/html/
 ```
 
+- apache 서버 재시작
+```sh
+sudo systemctl restart httpd
+```
+
 # 초기 작업
  - python 설치, node.js 설치
  - cmd에서 python --version 으로 버전 잘 뜨는지 확인
