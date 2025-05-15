@@ -50,6 +50,30 @@ def get_devices_from_rds(db: Session = Depends(get_rds)):
         for row in result
     ]
 
+
+# ✅ RDS 성능 로그 50개 가져오기 API
+@app.get("/api/device-stats/latest")
+def get_latest_device_stats(limit: int = 50, db: Session = Depends(get_rds)):
+    result = db.execute(text("""
+        SELECT device_id, timestamp, cpu_usage, mem_usage
+        FROM device_stats
+        ORDER BY timestamp DESC
+        LIMIT :limit
+    """), {"limit": limit}).fetchall()
+
+    return [
+        {
+            "device_id": row[0],
+            "timestamp": row[1].strftime("%Y-%m-%d %H:%M:%S") if row[1] else "",
+            "cpu_usage": row[2],
+            "mem_usage": row[3]
+        }
+        for row in result
+    ]
+
+
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -16,8 +16,8 @@ export default function Home() {
       path: '/employees'
     },
     {
-      title: '🕒 장애 이력',
-      desc: '장비 고장 기록 및 조치 내역',
+      title: '🕒 장비 실시간 데이터',
+      desc: '장비 실시간 성능 확인',
       path: '/downtime'
     },
     {
