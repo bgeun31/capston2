@@ -1,27 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
 export default function MonitoringPage() {
-  const [sensorData, setSensorData] = useState([
-    {
-      id: 'SW002',
-      name: 'Catalyst 9200 스위치',
-      temperature: 43,
-      cpuUsage: 78,
-      status: '경고'
-    },
-    {
-      id: 'RTR001',
-      name: 'Cisco ISR 4331 라우터',
-      temperature: 36,
-      cpuUsage: 52,
-      status: '정상'
-    }
-  ]);
-
+  const [sensorData, setSensorData] = useState([]);
   const [name, setName] = useState('');
   const [temperature, setTemperature] = useState('');
   const [cpuUsage, setCpuUsage] = useState('');
   const [status, setStatus] = useState('');
+
+  // ✅ 1. 마운트 시 백엔드에서 데이터 로딩
+  useEffect(() => {
+    axios.get('http://localhost:8000/api/performance-summary')
+      .then(res => {
+        const data = res.data;
+        const newList = [
+          {
+            id: 'summary',
+            name: '전체 평균',
+            temperature: data.avg_memory?.replace('%', '') || 0,
+            cpuUsage: data.avg_cpu?.replace('%', '') || 0,
+            status: '정상'
+          }
+        ];
+        setSensorData(newList);
+      })
+      .catch(err => console.error(err));
+  }, []);
+  
 
   const handleAddSensor = () => {
     if (!name || !temperature || !cpuUsage || !status) {
@@ -39,7 +44,6 @@ export default function MonitoringPage() {
 
     setSensorData([...sensorData, newSensor]);
 
-    // 입력 초기화
     setName('');
     setTemperature('');
     setCpuUsage('');

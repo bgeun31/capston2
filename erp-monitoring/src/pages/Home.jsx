@@ -6,18 +6,18 @@ export default function Home() {
 
   const menuItems = [
     {
-      title: '📦 자산 관리',
+      title: '📦 장비 관리',
       desc: '네트워크 장비 등록 및 상태 관리',
       path: '/assets'
     },
     {
-      title: '👨‍💻 인력 관리',
+      title: '👨‍💻 직원 관리',
       desc: '관리자/운영자 정보 관리',
       path: '/employees'
     },
     {
-      title: '🕒 장애 이력',
-      desc: '장비 고장 기록 및 조치 내역',
+      title: '🕒 장비 실시간 데이터',
+      desc: '장비 실시간 성능 확인',
       path: '/downtime'
     },
     {

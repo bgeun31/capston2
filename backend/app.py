@@ -18,10 +18,66 @@ from snort_log_streamer import stream_snort_log, stream_ids_alerts, stream_ids_e
 from sqlalchemy import text
 from db_multi import LocalSession, dual_commit
 import uuid
+from collections import defaultdict
+from fetch_topology_snmpv3 import normalize_device_name, get_interface_states
 
+from sqlalchemy.orm import Session
+from db import SessionLocal  # DB 세션 함수
+
+# 의존성 주입용
+from fastapi import Depends
+
+
+last_link_state = defaultdict(dict)  # {(device_id, iface): "up/down"}
 scheduler = BackgroundScheduler()
 
+# RDS 세션
+def get_rds():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 app = FastAPI()
+
+# ✅ RDS 장비 정보 가져오기 API
+@app.get("/api/rds-devices")
+def get_devices_from_rds(db: Session = Depends(get_rds)):
+    result = db.execute(text("SELECT device_id, name, ip, vendor FROM device")).fetchall()
+    return [
+        {
+            "id": row[0],
+            "name": row[1],
+            "ip": row[2],
+            "vendor": row[3]
+        }
+        for row in result
+    ]
+
+
+# ✅ RDS 성능 로그 50개 가져오기 API
+@app.get("/api/device-stats/latest")
+def get_latest_device_stats(limit: int = 50, db: Session = Depends(get_rds)):
+    result = db.execute(text("""
+        SELECT device_id, timestamp, cpu_usage, mem_usage
+        FROM device_stats
+        ORDER BY timestamp DESC
+        LIMIT :limit
+    """), {"limit": limit}).fetchall()
+
+    return [
+        {
+            "device_id": row[0],
+            "timestamp": row[1].strftime("%Y-%m-%d %H:%M:%S") if row[1] else "",
+            "cpu_usage": row[2],
+            "mem_usage": row[3]
+        }
+        for row in result
+    ]
+
+
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,6 +88,10 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup_event():
+    if os.environ.get("SKIP_SNMP", "false").lower() == "true":
+        print("[INFO] 환경변수에 따라 SNMP 초기화 생략됨")
+        return
+
     if os.path.exists("devices.yaml"):
         fetch_topology_snmpv3.main()
     else:
@@ -286,28 +346,15 @@ def get_alerts():
     ]
 
 @app.get("/api/events")
-def get_events():
+def get_events(limit: int = 20):
+    with LocalSession() as ses:
+        rows = ses.execute(text("""
+            SELECT title, description, datetime(timestamp, 'localtime')
+            FROM event_log ORDER BY timestamp DESC LIMIT :lim
+        """), {"lim": limit}).all()
     return [
-        {
-            "title": "Core Router 재부팅 완료",
-            "description": "펌웨어 업데이트 후 성공적으로 재부팅됨",
-            "timestamp": "15분 전"
-        },
-        {
-            "title": "Access Switch 2 포트 다운",
-            "description": "GigabitEthernet1/0/12 포트가 다운됨",
-            "timestamp": "32분 전"
-        },
-        {
-            "title": "구성 변경 감지됨",
-            "description": "방화벽에서 새로운 ACL 규칙이 추가됨",
-            "timestamp": "1시간 전"
-        },
-        {
-            "title": "새 장치 감지됨",
-            "description": "새 IP 장치가 네트워크에 연결되었습니다.",
-            "timestamp": "2시간 전"
-        }
+        {"title": r[0], "description": r[1], "timestamp": r[2]}
+        for r in rows
     ]
 
 @app.get("/api/performance-summary")
@@ -367,6 +414,10 @@ def get_summary():
     return {"devices": dev, "links": link, "alerts": alert}
 
 def collect_all_stats():
+    if os.environ.get("SKIP_SNMP", "false").lower() == "true":
+        print("[STATS] SNMP 수집 비활성화됨")
+        return
+
     print("[STATS] CPU/MEM 정보 수집 시작")
 
     with LocalSession() as ses:
@@ -407,10 +458,50 @@ async def ids_events_ws(websocket: WebSocket):
     """tail -F /var/log/snort/ids-events.jsonl"""
     await stream_ids_events(websocket)
 
+def collect_link_events():
+    with LocalSession() as ses:
+        devices = ses.execute(text(
+            "SELECT device_id, ip, username, password FROM device"
+        )).all()
+
+    for did, ip, user, pw in devices:
+        try:
+            cur = get_interface_states(ip, user, pw)  # 위 함수 호출
+        except Exception as e:
+            print(f"[LINK] {ip} 상태 수집 실패: {e}")
+            continue
+
+        for iface, now in cur.items():
+            key = (did, iface)
+            prev = last_link_state.get(key)
+            if prev and prev != now:                      # 상태 변화!
+                ev_type = "link_down" if now == "down" else "link_up"
+                title   = f"{iface} {'DOWN' if now=='down' else 'UP'}"
+                desc    = f"{ip} ({iface}) 상태가 {now.upper()} 으로 변경"
+                severity = "high" if now == "down" else "low"
+
+                dual_commit("""
+                  INSERT INTO event_log
+                  (type,title,description,severity,source)
+                  VALUES (:t,:ti,:d,:s,:src)
+                """, {"t": ev_type, "ti": title, "d": desc,
+                      "s": severity, "src": iface})
+
+            last_link_state[key] = now
+
 # 서버 시작 시 스케줄러도 시작
 @app.on_event("startup")
-def start_background_scheduler():
+def bootstrap():
+    # 1) DB 없으면 최초 초기화
+    first_boot = not os.path.exists("devices.db")
+    if first_boot and os.path.exists("devices.yaml"):
+        fetch_topology_snmpv3.main()
+    elif first_boot:
+        print("[WARNING] devices.yaml 이 없어서 초기화를 건너뜁니다.")
+
+    # 2) 스케줄러(성능·링크 이벤트) 기동
     if not scheduler.running:
         scheduler.add_job(collect_all_stats, 'interval', minutes=1)
+        scheduler.add_job(collect_link_events, 'interval', seconds=30)
         scheduler.start()
-        print("[SCHEDULER] 성능 정보 수집 스케줄러 시작됨")
+        print("[SCHEDULER] 백그라운드 수집기 기동 완료")
