@@ -41,3 +41,5 @@ app-example
 *.sqlite3
 *.db
 *.pyc
+
+venv310/

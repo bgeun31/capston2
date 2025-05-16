@@ -19,9 +19,61 @@ from sqlalchemy import text
 from db_multi import LocalSession, dual_commit
 import uuid
 
+from sqlalchemy.orm import Session
+from db import SessionLocal  # DB 세션 함수
+
+# 의존성 주입용
+from fastapi import Depends
+
 scheduler = BackgroundScheduler()
 
+# RDS 세션
+def get_rds():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 app = FastAPI()
+
+# ✅ RDS 장비 정보 가져오기 API
+@app.get("/api/rds-devices")
+def get_devices_from_rds(db: Session = Depends(get_rds)):
+    result = db.execute(text("SELECT device_id, name, ip, vendor FROM device")).fetchall()
+    return [
+        {
+            "id": row[0],
+            "name": row[1],
+            "ip": row[2],
+            "vendor": row[3]
+        }
+        for row in result
+    ]
+
+
+# ✅ RDS 성능 로그 50개 가져오기 API
+@app.get("/api/device-stats/latest")
+def get_latest_device_stats(limit: int = 50, db: Session = Depends(get_rds)):
+    result = db.execute(text("""
+        SELECT device_id, timestamp, cpu_usage, mem_usage
+        FROM device_stats
+        ORDER BY timestamp DESC
+        LIMIT :limit
+    """), {"limit": limit}).fetchall()
+
+    return [
+        {
+            "device_id": row[0],
+            "timestamp": row[1].strftime("%Y-%m-%d %H:%M:%S") if row[1] else "",
+            "cpu_usage": row[2],
+            "mem_usage": row[3]
+        }
+        for row in result
+    ]
+
+
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,6 +84,10 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup_event():
+    if os.environ.get("SKIP_SNMP", "false").lower() == "true":
+        print("[INFO] 환경변수에 따라 SNMP 초기화 생략됨")
+        return
+
     if os.path.exists("devices.yaml"):
         fetch_topology_snmpv3.main()
     else:
@@ -367,6 +423,10 @@ def get_summary():
     return {"devices": dev, "links": link, "alerts": alert}
 
 def collect_all_stats():
+    if os.environ.get("SKIP_SNMP", "false").lower() == "true":
+        print("[STATS] SNMP 수집 비활성화됨")
+        return
+
     print("[STATS] CPU/MEM 정보 수집 시작")
 
     with LocalSession() as ses:
@@ -414,3 +474,5 @@ def start_background_scheduler():
         scheduler.add_job(collect_all_stats, 'interval', minutes=1)
         scheduler.start()
         print("[SCHEDULER] 성능 정보 수집 스케줄러 시작됨")
+
+
