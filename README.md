@@ -52,6 +52,27 @@ npm start
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
 ```
 
+# AWS EC2 build 배포 관련 명령어
+ - ec2-user 권한으로 변경
+```sh
+sudo chown -R ec2-user:ec2-user /var/www/html/
+```
+
+- 로컬 -> 클라우드 빌드 파일 배포
+```sh
+scp -i "C:\Users\NLab\snmp_web_key.pem" -r build/* ec2-user@3.37.1.154:/var/www/html/
+```
+
+- apache 권한으로 변경
+```sh
+sudo chown -R apache:apache /var/www/html/
+```
+
+- apache 서버 재시작
+```sh
+sudo systemctl restart httpd
+```
+=======
  - Snort 실행:
 ```sh
 sudo snort -A fast -q -c /etc/snort/snort.conf -i ens33
@@ -60,8 +81,6 @@ sudo snort -A fast -q -c /etc/snort/snort.conf -i ens33
 ```sh
 sudo tail -f /var/log/snort/alert
 ```
-
-
 
 # 초기 작업
  - python 설치, node.js 설치
