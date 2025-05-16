@@ -420,15 +420,12 @@ def collect_link_events():
                 desc    = f"{ip} ({iface}) 상태가 {now.upper()} 으로 변경"
                 severity = "high" if now == "down" else "low"
 
-                dual_commit(
-                    """
-                    INSERT OR IGNORE INTO event_log
-                    (type, title, description, severity, source)
-                    VALUES (:t, :ti, :d, :s, :src)
-                    """,
-                    {"t": ev_type, "ti": title, "d": desc,
-                    "s": severity, "src": iface},
-                )
+                dual_commit("""
+                  INSERT INTO event_log
+                  (type,title,description,severity,source)
+                  VALUES (:t,:ti,:d,:s,:src)
+                """, {"t": ev_type, "ti": title, "d": desc,
+                      "s": severity, "src": iface})
 
             last_link_state[key] = now
 
