@@ -1,3 +1,5 @@
+#fetch_topology_snmpv3.py
+
 import yaml
 from netmiko import ConnectHandler
 import re
@@ -17,15 +19,21 @@ def normalize_device_name(name: str) -> str:
     """'SW2.capston.com' → 'SW2'"""
     return name.split('.')[0] if '.' in name else name
 
-def init_db(db_path: str = "devices.db") -> None:
+def init_db(db_path: str = "devices.db", reset: bool = False) -> None:
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
+
+    if reset:
+        for tbl in ("device", "link_info", "device_cache",
+                    "device_stats", "event_log"):
+            c.execute(f"DROP TABLE IF EXISTS {tbl}")
 
     # 모든 테이블 초기화 (테스트/개발 환경용)
     c.execute("DROP TABLE IF EXISTS device")
     c.execute("DROP TABLE IF EXISTS link_info")
     c.execute("DROP TABLE IF EXISTS device_cache")
     c.execute("DROP TABLE IF EXISTS device_stats")
+    c.execute("DROP TABLE IF EXISTS event_log")
 
     c.execute("""
     CREATE TABLE IF NOT EXISTS device (
@@ -63,6 +71,17 @@ def init_db(db_path: str = "devices.db") -> None:
       mem_usage TEXT
     )""")
 
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS event_log (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        type        TEXT,          -- link_down, link_up, config_change …
+        title       TEXT,
+        description TEXT,
+        severity    TEXT,          -- low / medium / high / critical
+        source      TEXT,          -- 장비명 또는 인터페이스
+        timestamp   DATETIME DEFAULT CURRENT_TIMESTAMP
+    )""")
+
     conn.commit()
     conn.close()
 
@@ -96,6 +115,23 @@ def insert_link(device_a: int, device_b: int, iface_a: str, iface_b: str) -> Non
         """,
         {"a": device_a, "b": device_b, "ia": iface_a, "ib": iface_b}
     )
+
+def get_interface_states(ip, username, password):
+    """{인터페이스: up/down} 딕셔너리 반환"""
+    dev = dict(device_type="cisco_ios", host=ip,
+               username=username, password=password, fast_cli=True)
+    with ConnectHandler(**dev) as conn:
+        conn.send_command("terminal length 0", strip_prompt=False)
+        out = conn.send_command("show interfaces status", expect_string=r"#")
+    states = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[0].startswith("Gi"):  # 예: Gi0/1
+            iface, status = parts[0], parts[1].lower()
+            states[iface] = "up" if status == "connected" else "down"
+    return states
+
+
 
 def cache_device_details(device_id: int, name: str, ip: str, vendor: str,
                           username: str, password: str,
