@@ -13,74 +13,135 @@ from pysnmp.hlapi import (
 )
 from db_multi import dual_commit, LocalSession
 from sqlalchemy import text
+from sqlalchemy import exc as sa_exc   # ← 맨 위 import 추가
+import pymysql
 
 # 도메인 이름을 제거하는 함수 추가
 def normalize_device_name(name: str) -> str:
     """'SW2.capston.com' → 'SW2'"""
     return name.split('.')[0] if '.' in name else name
 
-def init_db(db_path: str = "devices.db", reset: bool = False) -> None:
+def init_db(db_path: str = "devices.db", *, reset: bool = True) -> None:
+    """
+    - 로컬 SQLite 파일과 RDS(MySQL)를 동시 초기화
+    - reset=True  → 테이블 DROP 후 재생성
+    - UNIQUE 인덱스, 중복 레코드 삭제까지 처리
+    """
+    import sqlite3, pymysql
+    from db_multi import dual_commit
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    # ───────────────────── 테이블 정의 ──────────────────────
+    TABLES = {
+        "event_log": (
+            """CREATE TABLE IF NOT EXISTS event_log (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 type TEXT, title TEXT, description TEXT,
+                 severity TEXT, source TEXT,
+                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""",
+            """CREATE TABLE IF NOT EXISTS event_log (
+                 id INT AUTO_INCREMENT PRIMARY KEY,
+                 type VARCHAR(20), title VARCHAR(255), description TEXT,
+                 severity VARCHAR(10), source VARCHAR(50),
+                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
+        ),
+        "device": (
+            """CREATE TABLE IF NOT EXISTS device (
+                 device_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT, ip TEXT, vendor TEXT,
+                 username TEXT, password TEXT,
+                 auth_password TEXT, priv_password TEXT)""",
+            """CREATE TABLE IF NOT EXISTS device (
+                 device_id INT AUTO_INCREMENT PRIMARY KEY,
+                 name VARCHAR(50), ip VARCHAR(45), vendor VARCHAR(20),
+                 username VARCHAR(50), password VARCHAR(50),
+                 auth_password VARCHAR(50), priv_password VARCHAR(50))"""
+        ),
+        "link_info": (
+            """CREATE TABLE IF NOT EXISTS link_info (
+                 link_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 device_a INTEGER, device_b INTEGER,
+                 interface_a TEXT, interface_b TEXT)""",
+            """CREATE TABLE IF NOT EXISTS link_info (
+                 link_id INT AUTO_INCREMENT PRIMARY KEY,
+                 device_a INT, device_b INT,
+                 interface_a VARCHAR(50), interface_b VARCHAR(50))"""
+        ),
+        "device_cache": (
+            """CREATE TABLE IF NOT EXISTS device_cache (
+                 device_id INTEGER PRIMARY KEY, json TEXT)""",
+            """CREATE TABLE IF NOT EXISTS device_cache (
+                 device_id INT PRIMARY KEY, json JSON)"""
+        ),
+        "device_stats": (
+            """CREATE TABLE IF NOT EXISTS device_stats (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 device_id INTEGER,
+                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                 cpu_usage TEXT, mem_usage TEXT)""",
+            """CREATE TABLE IF NOT EXISTS device_stats (
+                 id INT AUTO_INCREMENT PRIMARY KEY,
+                 device_id INT,
+                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                 cpu_usage VARCHAR(10), mem_usage VARCHAR(10))"""
+        ),
+    }
+
+    # ───────────────────── SQLite 연결 ──────────────────────
     conn = sqlite3.connect(db_path)
-    c = conn.cursor()
+    cur  = conn.cursor()
 
+    # ───── 1) 필요 시 DROP ──────────────────────────────────
     if reset:
-        for tbl in ("device", "link_info", "device_cache",
-                    "device_stats", "event_log"):
-            c.execute(f"DROP TABLE IF EXISTS {tbl}")
+        for tbl in TABLES:
+            cur.execute(f"DROP TABLE IF EXISTS {tbl}")
+            dual_commit(f"DROP TABLE IF EXISTS {tbl}")
 
-    # 모든 테이블 초기화 (테스트/개발 환경용)
-    c.execute("DROP TABLE IF EXISTS device")
-    c.execute("DROP TABLE IF EXISTS link_info")
-    c.execute("DROP TABLE IF EXISTS device_cache")
-    c.execute("DROP TABLE IF EXISTS device_stats")
-    c.execute("DROP TABLE IF EXISTS event_log")
+    # ───── 2) CREATE TABLES (두 DB 모두) ───────────────────
+    for sql_lite, sql_my in TABLES.values():
+        cur.execute(sql_lite)
+        dual_commit(sql_my)
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS device (
-      device_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT,
-      ip TEXT,
-      vendor TEXT,
-      username TEXT,
-      password TEXT,
-      auth_password TEXT,
-      priv_password TEXT
-    )""")
+    # ───── 3) 중복 레코드 삭제 (공용 SQL) ─────
+    DEDUP_SQL = """
+    DELETE FROM event_log
+    WHERE id NOT IN (
+    SELECT id FROM (
+        SELECT MIN(id) AS id
+        FROM event_log
+        GROUP BY source, type
+    ) AS t
+    )
+    """
+    cur.execute(DEDUP_SQL)      # SQLite
+    conn.commit()               # 트랜잭션 종료
+    dual_commit(DEDUP_SQL)      # MySQL
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS link_info (
-      link_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      device_a INTEGER,
-      device_b INTEGER,
-      interface_a TEXT,
-      interface_b TEXT
-    )""")
+    # ───── 4) UNIQUE 인덱스 ───────────────────
+    # 4-1) SQLite — IF NOT EXISTS 로 한 번만
+    cur.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_event_src_type
+    ON event_log(source, type)
+    """)
+    conn.commit()
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS device_cache (
-      device_id INTEGER PRIMARY KEY,
-      json TEXT
-    )""")
+    # 4-2) MySQL — 이미 있으면 1061 무시
+    try:
+        # dual_commit_mysql : 로컬 SQLite 쪽은 건너뛰도록 만든 작은 헬퍼
+        def dual_commit_mysql(sql):
+            dual_commit(sql, skip_sqlite=True)    # db_multi.py 쪽에 flag 한 줄 추가
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS device_stats (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      device_id INTEGER,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-      cpu_usage TEXT,
-      mem_usage TEXT
-    )""")
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS event_log (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        type        TEXT,          -- link_down, link_up, config_change …
-        title       TEXT,
-        description TEXT,
-        severity    TEXT,          -- low / medium / high / critical
-        source      TEXT,          -- 장비명 또는 인터페이스
-        timestamp   DATETIME DEFAULT CURRENT_TIMESTAMP
-    )""")
+        dual_commit_mysql("""
+        CREATE UNIQUE INDEX uniq_event_src_type
+        ON event_log(source, type)
+        """)
+    except sa_exc.ProgrammingError as e:
+        # PyMySQL 1061 = Duplicate key name 'uniq_event_src_type'
+        if isinstance(e.orig, pymysql.err.InternalError) and e.orig.args[0] == 1061:
+            pass   # 이미 인덱스가 있으면 OK
+        else:
+            raise
 
     conn.commit()
     conn.close()
@@ -89,6 +150,25 @@ def _get_last_rowid() -> int:
     """Local SQLite 의 마지막 rowid 가져오기"""
     with LocalSession() as ses:
         return ses.execute(text("SELECT last_insert_rowid()")) .scalar()
+    
+def dedup_event_log(dialect: str = "sqlite"):
+    if dialect == "sqlite":
+        sql = """
+        DELETE FROM event_log
+        WHERE rowid NOT IN (
+          SELECT MIN(rowid) FROM event_log
+          GROUP BY source, type
+        )
+        """
+    else:  # mysql
+        sql = """
+        DELETE e1 FROM event_log e1
+        JOIN event_log e2
+          ON e1.source = e2.source
+         AND e1.type   = e2.type
+         AND e1.id     > e2.id
+        """
+    dual_commit(sql)            # 두 DB 모두 실행
 
 def insert_device(name: str, ip: str, vendor: str, username: str, password: str,
                   auth_pw: str | None = None, priv_pw: str | None = None) -> int:
