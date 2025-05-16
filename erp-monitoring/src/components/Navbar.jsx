@@ -12,8 +12,8 @@ export default function Navbar() {
     }}>
       <div>
         <Link to="/" style={linkStyle}>홈</Link>
-        <Link to="/assets" style={linkStyle}>자산</Link>
-        <Link to="/employees" style={linkStyle}>인력</Link>
+        <Link to="/assets" style={linkStyle}>장비</Link>
+        <Link to="/employees" style={linkStyle}>인사</Link>
         <Link to="/downtime" style={linkStyle}>시간</Link>
         <Link to="/monitoring" style={linkStyle}>데이터</Link>
       </div>

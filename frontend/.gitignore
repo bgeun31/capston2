@@ -41,3 +41,4 @@ app-example
 snmp_web_key
 
 build/
+build/static/

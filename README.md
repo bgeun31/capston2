@@ -72,6 +72,15 @@ sudo chown -R apache:apache /var/www/html/
 ```sh
 sudo systemctl restart httpd
 ```
+=======
+ - Snort 실행:
+```sh
+sudo snort -A fast -q -c /etc/snort/snort.conf -i ens33
+```
+ - Snort 기록 보기:
+```sh
+sudo tail -f /var/log/snort/alert
+```
 
 # 초기 작업
  - python 설치, node.js 설치
