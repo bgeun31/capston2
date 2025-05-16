@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { AlertTriangle, Filter, Eye, Shield, Search } from "lucide-react";
 import MainLayout from "../components/layout/MainLayout";
 import { WS_BASE } from "../utils/WsBase";
+import axios from "axios";
 
 export default function IDSPage() {
   const [alerts, setAlerts] = useState([]);
@@ -13,6 +14,7 @@ export default function IDSPage() {
   const [errorEvents, setErrorEvents] = useState(null);
   const [activeTab, setActiveTab] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [unblocking, setUnblocking] = useState({});
 
   // ✅ IDS 알림 WebSocket 구독
 useEffect(() => {
@@ -140,6 +142,30 @@ useEffect(() => {
     return true;
   });
 
+  // 차단 해제/재차단 토글 함수
+  const handleUnblock = async (alert) => {
+    if (unblocking[alert.id]) return; // 중복 클릭 방지
+    setUnblocking((prev) => ({ ...prev, [alert.id]: true }));
+    try {
+      if (alert.status === "해결됨") {
+        // 재차단 (상태를 '미해결'로 변경)
+        setAlerts((prev) => prev.map((a) => a.id === alert.id ? { ...a, status: "미해결" } : a));
+      } else {
+        // 차단 해제 (상태를 '해결됨'으로 변경)
+        setAlerts((prev) => prev.map((a) => a.id === alert.id ? { ...a, status: "해결됨" } : a));
+      }
+    } catch (err) {
+      alert("차단/해제에 실패했습니다.");
+    } finally {
+      setUnblocking((prev) => ({ ...prev, [alert.id]: false }));
+    }
+  };
+
+  // '미해결'만 필터링 (차단 목록)
+  const unresolvedAlerts = filteredAlerts.filter(a => a.status !== "해결됨");
+  // '해결됨'만 필터링 (차단해제 목록)
+  const resolvedAlerts = alerts.filter(a => a.status === "해결됨");
+
   return (
     <MainLayout>
       <div className="space-y-4 p-6">
@@ -203,10 +229,11 @@ useEffect(() => {
               </button>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto mb-8">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase">해제</th>
                     {['ID', '시간', '유형', '출발지', '목적지', '심각도', '상태', '작업'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                         {h}
@@ -215,8 +242,18 @@ useEffect(() => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredAlerts.length > 0 ? filteredAlerts.map(a => (
+                  {unresolvedAlerts.length > 0 ? unresolvedAlerts.map(a => (
                     <tr key={a.id} className="hover:bg-gray-50">
+                      <td className="px-2 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          disabled={unblocking[a.id]}
+                          onChange={() => handleUnblock(a)}
+                          className="w-5 h-5 accent-blue-500 cursor-pointer"
+                          title="차단 해제"
+                        />
+                      </td>
                       <td className="px-4 py-4 text-sm font-medium text-gray-900 whitespace-nowrap">{a.id}</td>
                       <td className="px-4 py-4 text-sm text-gray-500 whitespace-nowrap">{a.timestamp}</td>
                       <td className="px-4 py-4 text-sm text-gray-500 whitespace-nowrap">{a.type}</td>
@@ -230,7 +267,54 @@ useEffect(() => {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center text-gray-500">검색 결과가 없습니다</td>
+                      <td colSpan={9} className="py-8 text-center text-gray-500">검색 결과가 없습니다</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 차단해제 목록 테이블 */}
+            <div className="overflow-x-auto mb-8">
+              <h2 className="text-xl font-bold mb-2">차단해제 목록</h2>
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase">차단</th>
+                    {['ID', '시간', '유형', '출발지', '목적지', '심각도', '상태', '작업'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {resolvedAlerts.length > 0 ? resolvedAlerts.map(a => (
+                    <tr key={a.id} className="hover:bg-gray-50">
+                      <td className="px-2 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={true}
+                          disabled={unblocking[a.id]}
+                          onChange={() => handleUnblock(a)}
+                          className="w-5 h-5 accent-blue-500 cursor-pointer"
+                          title="재차단"
+                        />
+                      </td>
+                      <td className="px-4 py-4 text-sm font-medium text-gray-900 whitespace-nowrap">{a.id}</td>
+                      <td className="px-4 py-4 text-sm text-gray-500 whitespace-nowrap">{a.timestamp}</td>
+                      <td className="px-4 py-4 text-sm text-gray-500 whitespace-nowrap">{a.type}</td>
+                      <td className="px-4 py-4 text-sm text-gray-500 whitespace-nowrap">{a.source}</td>
+                      <td className="px-4 py-4 text-sm text-gray-500 whitespace-nowrap">{a.destination}</td>
+                      <td className="px-4 py-4 text-sm whitespace-nowrap">{getSeverityBadge(a.severity)}</td>
+                      <td className="px-4 py-4 text-sm whitespace-nowrap">{getStatusBadge(a.status)}</td>
+                      <td className="px-4 py-4 text-sm text-right whitespace-nowrap">
+                        <Eye className="h-4 w-4 text-gray-400 hover:text-gray-600" />
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={9} className="py-8 text-center text-gray-500">차단해제된 알림이 없습니다</td>
                     </tr>
                   )}
                 </tbody>
