@@ -42,3 +42,9 @@ snmp_web_key
 
 build/
 build/static/
+build/asset-manifest.json
+build/index.html
+build/service-worker.js
+build/precache-manifest.js
+build/workbox-*.js
+build/manifest.json
