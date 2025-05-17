@@ -81,6 +81,14 @@ sudo snort -A fast -q -c /etc/snort/snort.conf -i ens33
 ```sh
 sudo tail -f /var/log/snort/alert
 ```
+ - 차단된 IP 확인:
+```sh
+sudo iptables -L INPUT -n --line-numbers
+```
+ - 특정 IP 차단 해제:
+```sh
+sudo iptables -D INPUT -s <IP주소> -j DROP
+```
 
 # 초기 작업
  - python 설치, node.js 설치
